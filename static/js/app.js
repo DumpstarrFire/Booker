@@ -1550,6 +1550,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // Filter controls toggle (mobile)
+  document.getElementById('filterBarToggle')?.addEventListener('click', () => {
+    document.getElementById('filterControls')?.classList.toggle('open');
+  });
+
   // Send dialog (manual address entry fallback)
   document.getElementById('confirmSendBtn').addEventListener('click', confirmSend);
 
