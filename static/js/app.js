@@ -1520,7 +1520,10 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('closeCoverDialogBtn').addEventListener('click', () => closeDialog('coverDialog'));
   document.getElementById('refreshLibraryBtn').addEventListener('click', async () => {
     const data = await apiJSON('/api/books/scan', { method: 'POST' });
-    if (data?.added > 0) snack(`Found ${data.added} new book${data.added === 1 ? '' : 's'}`);
+    const parts = [];
+    if (data?.added > 0) parts.push(`${data.added} added`);
+    if (data?.removed > 0) parts.push(`${data.removed} removed`);
+    snack(parts.length ? parts.join(', ') : 'Library up to date');
     loadBooks();
   });
 

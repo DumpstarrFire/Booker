@@ -311,8 +311,19 @@ def create_app():
     @app.route("/api/books/scan", methods=["POST"])
     @login_required
     def scan_books():
-        """Walk BOOKS_DIR and register any files not already in the DB."""
+        """Walk BOOKS_DIR, register new files, and remove DB entries for deleted files."""
+        # ── Remove stale records (file deleted from disk) ──────────────────
+        removed = 0
+        for book in Book.query.all():
+            if not (BOOKS_DIR / book.filename).exists():
+                cover_mgr.delete_cover(book.id)
+                db.session.delete(book)
+                removed += 1
+        db.session.commit()
+
+        # ── Register new files ─────────────────────────────────────────────
         known = {b.filename for b in Book.query.with_entities(Book.filename).all()}
+        auto_meta = Settings.get("auto_metadata", "false") == "true"
         added = 0
         for path in BOOKS_DIR.rglob("*"):
             if not path.is_file():
@@ -323,6 +334,7 @@ def create_app():
             rel = str(path.relative_to(BOOKS_DIR))
             if rel in known:
                 continue
+
             book = Book(
                 filename=rel,
                 file_format=ext,
@@ -331,6 +343,8 @@ def create_app():
             )
             db.session.add(book)
             db.session.flush()
+
+            # Extract embedded cover
             cover_data = None
             if ext == "epub":
                 cover_data = cover_mgr.extract_cover_from_epub(str(path))
@@ -340,10 +354,30 @@ def create_app():
                 cf = cover_mgr.save_cover(book.id, cover_data)
                 if cf:
                     book.cover_filename = cf
+
+            # Extract and apply embedded metadata (title, author, ISBN, …)
+            embedded = extract_embedded_metadata(path, ext)
+            if any(embedded.values()):
+                _apply_metadata(book, embedded, replace_missing_only=False)
+
+            # Auto-fetch from online sources if the setting is on
+            if auto_meta:
+                try:
+                    _auto_fetch_metadata(book)
+                except Exception as exc:
+                    logger.warning("Auto-fetch failed for scanned book %s: %s", rel, exc)
+
+            # Apply rename/organize scheme
+            try:
+                _rename_and_organize(book, path)
+            except Exception as exc:
+                logger.warning("Rename failed for scanned book %s: %s", rel, exc)
+
             added += 1
-            known.add(rel)
+            known.add(book.filename)  # use updated filename after rename
+
         db.session.commit()
-        return jsonify({"added": added})
+        return jsonify({"added": added, "removed": removed})
 
     @app.route("/api/books/upload", methods=["POST"])
     @login_required
