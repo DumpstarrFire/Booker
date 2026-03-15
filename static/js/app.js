@@ -55,7 +55,8 @@ function snack(msg, duration = 3500) {
 function navigate(view, opts = {}) {
   state.view = view;
   state.activeShelf = opts.shelf || null;
-  sessionStorage.setItem('lastView', view);
+  // Keep URL hash in sync so page refresh restores the current view
+  history.replaceState(null, '', view === 'library' ? '/' : '#' + view);
 
   // Sync both nav rail and bottom nav
   document.querySelectorAll('.nav-rail-item, .bottom-nav-item').forEach(btn => {
@@ -1235,15 +1236,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Handle PWA shortcut hashes (e.g. /#upload, /#shelves)
-  const hash = location.hash.replace('#', '');
-  const hashViews = ['library', 'shelves', 'upload', 'settings'];
-  if (hashViews.includes(hash)) {
-    history.replaceState(null, '', '/');
-    navigate(hash);
-    return;
-  }
-
   // Grid size buttons (3 levels: Compact / Standard / Large)
   const GRID_SIZES = [130, 180, 240];
   const savedGridSize = parseInt(localStorage.getItem('gridMin') || '180', 10);
@@ -1456,10 +1448,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (d.username) document.getElementById('userMenuLabel').textContent = 'Signed in as ' + d.username;
   });
 
-  // Restore last view (survives page reload)
-  const lastView = sessionStorage.getItem('lastView');
-  const validViews = ['library', 'shelves', 'upload', 'settings'];
-  navigate(validViews.includes(lastView) ? lastView : 'library');
+  // Restore view from URL hash (set by navigate(); survives refresh/bookmark/share)
+  const _VIEWS = ['library', 'shelves', 'upload', 'settings'];
+  const _hash = location.hash.replace('#', '');
+  navigate(_VIEWS.includes(_hash) ? _hash : 'library');
 });
 
 function previewCoverFile(file) {
