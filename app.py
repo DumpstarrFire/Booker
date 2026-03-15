@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 BOOKS_DIR = DATA_DIR / "books"
 COVERS_DIR = DATA_DIR / "covers"
 ALLOWED_EXTENSIONS = {"epub", "pdf", "mobi", "azw", "azw3", "fb2", "djvu", "cbz", "cbr", "txt"}
-MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "500"))
+MAX_UPLOAD_MB = 35
 
 
 def create_app():

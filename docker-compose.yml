@@ -12,7 +12,6 @@ services:
       - booker_data:/app/data
     environment:
       DATA_DIR: /app/data
-      MAX_UPLOAD_MB: "${MAX_UPLOAD_MB:-500}"
 
       # ── Optional: pre-configure SMTP ──────────────────
       # These can also be set in the Settings UI instead
