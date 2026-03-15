@@ -1,7 +1,10 @@
-"""Metadata scraping from Google Books, Open Library, and GoodReads."""
+"""Metadata scraping from Google Books, Open Library, iTunes, GoodReads, and LibraryThing."""
 import re
 import time
 import logging
+import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import requests
 from bs4 import BeautifulSoup
 
@@ -21,17 +24,24 @@ HEADERS = {
 # ---------------------------------------------------------------------------
 
 def search_google_books(query: str, max_results: int = 10) -> list[dict]:
-    """Search Google Books API."""
+    """Search Google Books API with rate-limit retry."""
     url = "https://www.googleapis.com/books/v1/volumes"
     params = {"q": query, "maxResults": max_results, "printType": "books"}
-    try:
-        r = requests.get(url, params=params, timeout=10)
-        r.raise_for_status()
-        data = r.json()
-        return [_parse_google_volume(item) for item in data.get("items", [])]
-    except Exception as exc:
-        logger.warning("Google Books search failed: %s", exc)
-        return []
+    for attempt in range(3):
+        try:
+            r = requests.get(url, params=params, timeout=10)
+            if r.status_code == 429:
+                wait = 2 ** attempt
+                logger.warning("Google Books rate limited, retrying in %ds", wait)
+                time.sleep(wait)
+                continue
+            r.raise_for_status()
+            data = r.json()
+            return [_parse_google_volume(item) for item in data.get("items", [])]
+        except Exception as exc:
+            logger.warning("Google Books search failed: %s", exc)
+            return []
+    return []
 
 
 def fetch_google_books_by_isbn(isbn: str) -> dict | None:
@@ -43,9 +53,16 @@ def _parse_google_volume(item: dict) -> dict:
     info = item.get("volumeInfo", {})
     isbns = {i["type"]: i["identifier"] for i in info.get("industryIdentifiers", [])}
     image = info.get("imageLinks", {})
-    cover_url = image.get("extraLarge") or image.get("large") or image.get("thumbnail")
+    # Get best available cover; replace zoom param for higher quality
+    cover_url = (
+        image.get("extraLarge") or image.get("large")
+        or image.get("medium") or image.get("thumbnail")
+    )
     if cover_url:
         cover_url = cover_url.replace("http://", "https://")
+        # Upgrade to higher resolution
+        cover_url = re.sub(r"zoom=\d+", "zoom=3", cover_url)
+        cover_url = cover_url.replace("&edge=curl", "")
     return {
         "source": "google_books",
         "google_books_id": item.get("id"),
@@ -71,9 +88,13 @@ def _parse_google_volume(item: dict) -> dict:
 def search_open_library(query: str, max_results: int = 10) -> list[dict]:
     """Search Open Library."""
     url = "https://openlibrary.org/search.json"
-    params = {"q": query, "limit": max_results, "fields": "key,title,author_name,isbn,publisher,first_publish_year,language,number_of_pages_median,subject,cover_i,ratings_average"}
+    params = {
+        "q": query,
+        "limit": max_results,
+        "fields": "key,title,author_name,isbn,publisher,first_publish_year,language,number_of_pages_median,subject,cover_i,ratings_average",
+    }
     try:
-        r = requests.get(url, params=params, timeout=10)
+        r = requests.get(url, params=params, timeout=15)
         r.raise_for_status()
         data = r.json()
         return [_parse_ol_doc(doc) for doc in data.get("docs", [])]
@@ -111,32 +132,69 @@ def _parse_ol_doc(doc: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# iTunes / Apple Books  (great high-res covers, no auth required)
+# ---------------------------------------------------------------------------
+
+def search_itunes(query: str, max_results: int = 10) -> list[dict]:
+    """Search Apple Books (iTunes) — reliable source of high-res covers."""
+    url = "https://itunes.apple.com/search"
+    params = {"term": query, "media": "ebook", "limit": max_results}
+    try:
+        r = requests.get(url, params=params, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        results = []
+        for item in data.get("results", []):
+            raw_cover = item.get("artworkUrl100", "")
+            # Upgrade thumbnail to high-res
+            cover_url = raw_cover.replace("100x100bb", "600x600bb") if raw_cover else None
+            results.append({
+                "source": "itunes",
+                "title": item.get("trackName"),
+                "author": item.get("artistName"),
+                "publisher": item.get("sellerName"),
+                "published_date": (item.get("releaseDate") or "")[:10],
+                "description": item.get("description"),
+                "page_count": None,
+                "categories": ", ".join(item.get("genres", [])),
+                "language": None,
+                "isbn": None,
+                "isbn13": None,
+                "rating": None,
+                "cover_url": cover_url,
+            })
+        return results
+    except Exception as exc:
+        logger.warning("iTunes search failed: %s", exc)
+        return []
+
+
+# ---------------------------------------------------------------------------
 # GoodReads (scrape)
 # ---------------------------------------------------------------------------
 
 def search_goodreads(query: str, max_results: int = 10) -> list[dict]:
-    """Search GoodReads (scrape)."""
-    url = "https://www.goodreads.com/search/index.xml"
-    # GoodReads deprecated their API; fall back to web scrape
+    """Search GoodReads (web scrape)."""
     url = f"https://www.goodreads.com/search?q={requests.utils.quote(query)}&search_type=books"
     try:
-        r = requests.get(url, headers=HEADERS, timeout=12)
+        r = requests.get(url, headers=HEADERS, timeout=15)
         r.raise_for_status()
         soup = BeautifulSoup(r.text, "lxml")
         results = []
         for row in soup.select("tr[itemtype='http://schema.org/Book']")[:max_results]:
-            results.append(_parse_gr_row(row))
-        return [r for r in results if r]
+            item = _parse_gr_row(row)
+            if item:
+                results.append(item)
+        return results
     except Exception as exc:
         logger.warning("GoodReads search failed: %s", exc)
         return []
 
 
 def fetch_goodreads_book(book_id: str) -> dict | None:
-    """Fetch full details for a GoodReads book."""
     url = f"https://www.goodreads.com/book/show/{book_id}"
     try:
-        r = requests.get(url, headers=HEADERS, timeout=12)
+        r = requests.get(url, headers=HEADERS, timeout=15)
         r.raise_for_status()
         return _parse_gr_book_page(r.text, book_id)
     except Exception as exc:
@@ -157,22 +215,18 @@ def _parse_gr_row(row) -> dict | None:
         cover_url = None
         if cover_el:
             src = cover_el.get("src", "")
+            # Strip size constraints to get largest available
             cover_url = re.sub(r"\._\w+_\.jpg", ".jpg", src)
+            cover_url = re.sub(r"SX\d+|SY\d+|CR\d+,\d+,\d+,\d+|_", "", cover_url)
         return {
             "source": "goodreads",
             "goodreads_id": gr_id,
             "title": title_el.text.strip() if title_el else None,
             "author": author_el.text.strip() if author_el else None,
             "cover_url": cover_url,
-            "publisher": None,
-            "published_date": None,
-            "description": None,
-            "page_count": None,
-            "categories": None,
-            "language": None,
-            "isbn": None,
-            "isbn13": None,
-            "rating": None,
+            "publisher": None, "published_date": None, "description": None,
+            "page_count": None, "categories": None, "language": None,
+            "isbn": None, "isbn13": None, "rating": None,
         }
     except Exception:
         return None
@@ -214,8 +268,7 @@ def _parse_gr_book_page(html: str, book_id: str) -> dict:
         "title": title,
         "author": author,
         "cover_url": cover_url,
-        "publisher": None,
-        "published_date": None,
+        "publisher": None, "published_date": None,
         "description": description,
         "page_count": page_count,
         "categories": categories,
@@ -227,70 +280,206 @@ def _parse_gr_book_page(html: str, book_id: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Amazon (scrape)
+# LibraryThing  (requires API key for full metadata; covers are key-based)
 # ---------------------------------------------------------------------------
 
-def search_amazon(query: str) -> list[dict]:
-    """Search Amazon for book metadata (best-effort scrape)."""
-    url = f"https://www.amazon.com/s?k={requests.utils.quote(query)}&i=stripbooks"
-    try:
-        r = requests.get(url, headers=HEADERS, timeout=12)
-        r.raise_for_status()
-        soup = BeautifulSoup(r.text, "lxml")
-        results = []
-        for item in soup.select("div[data-component-type='s-search-result']")[:10]:
-            result = _parse_amazon_item(item)
-            if result:
-                results.append(result)
-        return results
-    except Exception as exc:
-        logger.warning("Amazon search failed: %s", exc)
+def search_librarything(query: str, api_key: str = "", max_results: int = 8) -> list[dict]:
+    """
+    Search LibraryThing via thingTitle → getwork chain.
+    Requires a LibraryThing developer API key.
+    """
+    if not api_key:
         return []
 
-
-def _parse_amazon_item(item) -> dict | None:
+    # Step 1: thingTitle → list of ISBNs for the most likely work
+    title_url = f"https://www.librarything.com/api/{api_key}/thingTitle/{requests.utils.quote(query)}"
     try:
-        title_el = item.select_one("h2 a span")
-        title = title_el.text.strip() if title_el else None
-        author_el = item.select_one("div.a-row.a-size-base.a-color-secondary a")
-        author = author_el.text.strip() if author_el else None
-        cover_el = item.select_one("img.s-image")
-        cover_url = cover_el["src"] if cover_el else None
-        asin_el = item.get("data-asin")
+        r = requests.get(title_url, headers=HEADERS, timeout=12)
+        r.raise_for_status()
+        root = ET.fromstring(r.text)
+        isbns = [el.text.strip() for el in root.findall("isbn") if el.text][:max_results]
+    except Exception as exc:
+        logger.warning("LibraryThing thingTitle failed: %s", exc)
+        return []
+
+    if not isbns:
+        return []
+
+    # Step 2: getwork for each unique ISBN (rate-limited: 1 req/s)
+    results = []
+    seen_ids = set()
+    for isbn in isbns:
+        work = _fetch_lt_work_by_isbn(isbn, api_key)
+        if work:
+            wid = work.get("_lt_work_id")
+            if wid and wid in seen_ids:
+                continue
+            if wid:
+                seen_ids.add(wid)
+            results.append(work)
+        time.sleep(1.1)  # LT rate limit: 1 req/s
+    return results
+
+
+def _fetch_lt_work_by_isbn(isbn: str, api_key: str) -> dict | None:
+    url = "https://www.librarything.com/services/rest/1.1/"
+    params = {
+        "method": "librarything.ck.getwork",
+        "id": isbn,
+        "apikey": api_key,
+        "ct": "json",
+    }
+    try:
+        r = requests.get(url, params=params, headers=HEADERS, timeout=12)
+        r.raise_for_status()
+        data = r.json()
+        if data.get("stat") != "ok":
+            return None
+        res = data.get("result", {})
+        work_id = str(res.get("id", ""))
+
+        # Title
+        title_obj = res.get("title")
+        title = title_obj.get("displayForm") if isinstance(title_obj, dict) else title_obj
+
+        # Author
+        author_obj = res.get("author")
+        author = author_obj.get("displayForm") if isinstance(author_obj, dict) else author_obj
+
+        # Rating
+        rating_obj = res.get("rating")
+        rating = None
+        if isinstance(rating_obj, dict):
+            try:
+                rating = float(rating_obj.get("value", 0)) or None
+            except (ValueError, TypeError):
+                pass
+
+        # Description from common knowledge
+        desc = None
+        ck = res.get("commonknowledge", {})
+        if isinstance(ck, dict):
+            desc_field = ck.get("description", {})
+            if isinstance(desc_field, dict):
+                fields = desc_field.get("field", [])
+                if fields and isinstance(fields, list):
+                    desc = fields[0].get("text")
+
+        # ISBNs
+        all_isbns = res.get("isbn", []) or []
+        if isinstance(all_isbns, str):
+            all_isbns = [all_isbns]
+        isbn10 = next((i for i in all_isbns if len(i) == 10), isbn if len(isbn) == 10 else None)
+        isbn13 = next((i for i in all_isbns if len(i) == 13), isbn if len(isbn) == 13 else None)
+
+        # Cover via LT cover service (uses dev key + isbn)
+        cover_isbn = isbn13 or isbn10 or isbn
+        cover_url = f"https://covers.librarything.com/devkey/{api_key}/large/isbn/{cover_isbn}"
+
         return {
-            "source": "amazon",
+            "source": "librarything",
+            "_lt_work_id": work_id,
             "title": title,
             "author": author,
-            "cover_url": cover_url,
-            "asin": asin_el,
             "publisher": None,
             "published_date": None,
-            "description": None,
+            "description": desc,
             "page_count": None,
             "categories": None,
             "language": None,
-            "isbn": None,
-            "isbn13": None,
-            "rating": None,
+            "isbn": isbn10,
+            "isbn13": isbn13,
+            "rating": rating,
+            "cover_url": cover_url,
         }
-    except Exception:
+    except Exception as exc:
+        logger.warning("LibraryThing getwork failed for isbn %s: %s", isbn, exc)
         return None
 
 
 # ---------------------------------------------------------------------------
-# Unified search
+# Cover search by ISBN (dedicated cover lookup)
 # ---------------------------------------------------------------------------
 
-def search_all_sources(query: str) -> dict:
-    """Search all available metadata sources."""
-    google = search_google_books(query)
-    open_lib = search_open_library(query)
-    goodreads = search_goodreads(query)
-    return {
-        "google_books": google,
-        "open_library": open_lib,
-        "goodreads": goodreads,
-    }
+def fetch_cover_urls_for_isbn(isbn: str) -> list[str]:
+    """Return a prioritized list of cover image URLs for a given ISBN."""
+    urls = []
+    clean = re.sub(r"[^0-9X]", "", isbn.upper())
+    if len(clean) == 13:
+        urls.append(f"https://covers.openlibrary.org/b/isbn/{clean}-L.jpg")
+        # Google Books by ISBN
+        gb = fetch_google_books_by_isbn(clean)
+        if gb and gb.get("cover_url"):
+            urls.append(gb["cover_url"])
+    elif len(clean) == 10:
+        urls.append(f"https://covers.openlibrary.org/b/isbn/{clean}-L.jpg")
+        gb = fetch_google_books_by_isbn(clean)
+        if gb and gb.get("cover_url"):
+            urls.append(gb["cover_url"])
+    return urls
+
+
+# ---------------------------------------------------------------------------
+# Unified parallel search
+# ---------------------------------------------------------------------------
+
+SOURCE_FNS = {
+    "google_books":  search_google_books,
+    "open_library":  search_open_library,
+    "itunes":        search_itunes,
+    "goodreads":     search_goodreads,
+    # librarything is handled separately (needs api_key, rate-limited)
+}
+
+DEFAULT_SOURCE_ORDER = ["google_books", "open_library", "itunes", "goodreads", "librarything"]
+
+SOURCE_LABELS = {
+    "google_books":  "Google Books",
+    "open_library":  "Open Library",
+    "itunes":        "Apple Books",
+    "goodreads":     "GoodReads",
+    "librarything":  "LibraryThing",
+}
+
+
+def search_all_sources(
+    query: str,
+    sources: list[str] | None = None,
+    api_keys: dict | None = None,
+) -> list[dict]:
+    """
+    Search all requested sources; parallel for fast sources, sequential for rate-limited.
+    api_keys: dict with keys like {"librarything": "mykey"}
+    """
+    if sources is None:
+        sources = DEFAULT_SOURCE_ORDER
+    if api_keys is None:
+        api_keys = {}
+
+    fast_sources = [s for s in sources if s in SOURCE_FNS]
+    results_by_source: dict[str, list[dict]] = {}
+
+    # Parallel search for fast sources
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        futures = {ex.submit(SOURCE_FNS[s], query): s for s in fast_sources}
+        for fut in as_completed(futures):
+            src = futures[fut]
+            try:
+                results_by_source[src] = fut.result()
+            except Exception as exc:
+                logger.warning("Source %s failed: %s", src, exc)
+                results_by_source[src] = []
+
+    # LibraryThing (rate-limited, sequential)
+    if "librarything" in sources:
+        lt_key = api_keys.get("librarything", "")
+        results_by_source["librarything"] = search_librarything(query, lt_key)
+
+    # Return in priority order
+    flat: list[dict] = []
+    for src in sources:
+        flat.extend(results_by_source.get(src, []))
+    return flat
 
 
 def fetch_cover_image(url: str) -> bytes | None:
