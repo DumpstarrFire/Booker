@@ -13,7 +13,6 @@ import SetupPage from './pages/SetupPage';
 import LibraryPage from './pages/LibraryPage';
 import UploadPage from './pages/UploadPage';
 import SettingsPage from './pages/SettingsPage';
-import ShelvesPage from './pages/ShelvesPage';
 import TopBar from './components/TopBar';
 
 // ── Toast context ─────────────────────────────────────────────────────────
@@ -127,7 +126,6 @@ export default function App() {
               {view === 'library' && <LibraryPage />}
               {view === 'upload' && <UploadPage />}
               {view === 'settings' && <SettingsPage />}
-              {view === 'shelves' && <ShelvesPage />}
             </main>
           </div>
         )}

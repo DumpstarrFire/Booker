@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { BookOpen, Trash2, Save, Image, ChevronDown, Check, AlertCircle, Download, Star, Send, Layers } from 'lucide-react'
+import { BookOpen, Trash2, Save, Image, ChevronDown, Check, AlertCircle, Download, Star, Send } from 'lucide-react'
 import * as api from '../api/client'
-import { Book, Tag, Shelf, EmailAddress } from '../types'
+import { Book, Tag, EmailAddress } from '../types'
 import Dialog from './Dialog'
 import MetaDialog from './MetaDialog'
 import Spinner from './Spinner'
@@ -129,11 +129,6 @@ export default function BookDialog({ bookId, onClose, onDelete }: BookDialogProp
     queryFn: () => api.getTags(),
   })
 
-  const { data: shelves = [] } = useQuery<Shelf[]>({
-    queryKey: ['shelves'],
-    queryFn: () => api.getShelves(),
-  })
-
   const { data: emailAddresses = [] } = useQuery<EmailAddress[]>({
     queryKey: ['emailAddresses'],
     queryFn: () => api.getEmailAddresses(),
@@ -149,24 +144,10 @@ export default function BookDialog({ bookId, onClose, onDelete }: BookDialogProp
   const [imgError, setImgError] = useState(false)
   const [showMetaDialog, setShowMetaDialog] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [shelfMenuOpen, setShelfMenuOpen] = useState(false)
   const [emailMenuOpen, setEmailMenuOpen] = useState(false)
 
   const coverInputRef = useRef<HTMLInputElement>(null)
-  const shelfMenuRef = useRef<HTMLDivElement>(null)
   const emailMenuRef = useRef<HTMLDivElement>(null)
-
-  // Close shelf menu on outside click
-  useEffect(() => {
-    if (!shelfMenuOpen) return
-    const handleClick = (e: MouseEvent) => {
-      if (shelfMenuRef.current && !shelfMenuRef.current.contains(e.target as Node)) {
-        setShelfMenuOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [shelfMenuOpen])
 
   // Close email menu on outside click
   useEffect(() => {
@@ -256,11 +237,6 @@ export default function BookDialog({ bookId, onClose, onDelete }: BookDialogProp
     },
   })
 
-  const addToShelfMutation = useMutation({
-    mutationFn: (shelfId: number) => api.addBooksToShelf(shelfId, [bookId]),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['shelves'] }),
-    onError: (e: Error) => addToast('error', e.message),
-  })
 
   const sendMutation = useMutation({
     mutationFn: (recipient: string) => api.sendBook(bookId, recipient),
@@ -340,36 +316,6 @@ export default function BookDialog({ bookId, onClose, onDelete }: BookDialogProp
                   >
                     <span className="text-sm text-ink truncate">{addr.label || addr.email}</span>
                     {addr.label && <span className="text-xs text-ink-muted truncate">{addr.email}</span>}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Add to shelf */}
-        {shelves.length > 0 && (
-          <div ref={shelfMenuRef} className="relative">
-            <button
-              type="button"
-              onClick={() => setShelfMenuOpen(v => !v)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded text-sm font-medium text-ink border border-line hover:bg-surface-raised transition-colors"
-              title="Add to shelf"
-            >
-              <Layers size={14} />
-              Shelf
-            </button>
-            {shelfMenuOpen && (
-              <div className="absolute right-0 bottom-full mb-1 w-44 bg-surface-raised border border-line rounded-lg shadow-xl py-1 z-50">
-                {shelves.map(shelf => (
-                  <button
-                    key={shelf.id}
-                    type="button"
-                    onClick={() => { addToShelfMutation.mutate(shelf.id); setShelfMenuOpen(false) }}
-                    className="flex items-center gap-2 w-full px-3 py-2 text-sm text-ink hover:bg-surface-high transition-colors"
-                  >
-                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: shelf.color }} />
-                    <span className="truncate">{shelf.name}</span>
                   </button>
                 ))}
               </div>
