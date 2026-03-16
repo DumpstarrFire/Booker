@@ -67,7 +67,7 @@ export default function FilterBar() {
 
   useEffect(() => {
     const onScroll = () => {
-      if (window.innerWidth >= 640) { setBarHidden(false); return }
+      if (window.innerWidth >= 1024) { setBarHidden(false); return }
       if (mobilePanelRef.current !== null) { setBarHidden(false); lastScrollY.current = window.scrollY; return }
       const current = window.scrollY
       if (current < 80) { setBarHidden(false); lastScrollY.current = current; return }
@@ -358,11 +358,11 @@ export default function FilterBar() {
     <div className={[
       'sticky top-16 z-30 bg-surface border-b border-line px-4 py-2.5 flex flex-col gap-2',
       'transition-transform duration-300 ease-in-out',
-      barHidden ? '-translate-y-full sm:translate-y-0' : 'translate-y-0',
+      barHidden ? '-translate-y-full lg:translate-y-0' : 'translate-y-0',
     ].join(' ')}>
 
       {/* Mobile: search bar row with Filters + Views triggers on the right */}
-      <div className="sm:hidden flex items-center gap-2">
+      <div className="lg:hidden flex items-center gap-2">
         <div className="flex-1">
           <SearchBar />
         </div>
@@ -374,7 +374,7 @@ export default function FilterBar() {
               type="button"
               onClick={() => toggleMobilePanel('filters')}
               className={[
-                'relative flex items-center justify-center w-8 h-8 shrink-0 rounded border bg-surface-raised transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+                'relative flex items-center justify-center w-10 h-10 shrink-0 rounded border bg-surface-raised transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
                 mobilePanel === 'filters'
                   ? 'border-accent text-accent bg-accent/10'
                   : hasActiveFilters
@@ -395,7 +395,7 @@ export default function FilterBar() {
               type="button"
               onClick={() => toggleMobilePanel('views')}
               className={[
-                'flex items-center justify-center w-8 h-8 shrink-0 rounded border bg-surface-raised transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+                'flex items-center justify-center w-10 h-10 shrink-0 rounded border bg-surface-raised transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
                 mobilePanel === 'views'
                   ? 'border-accent text-accent bg-accent/10'
                   : 'border-line text-ink-muted hover:border-line-strong hover:text-ink',
@@ -418,12 +418,12 @@ export default function FilterBar() {
         ) : (
           <>
             {/* Desktop: inline filters */}
-            <div className="hidden sm:flex flex-1 min-w-0">
+            <div className="hidden lg:flex flex-1 min-w-0">
               {filterControls}
             </div>
 
             {/* Desktop: right controls */}
-            <div className="hidden sm:flex items-center gap-2 shrink-0">
+            <div className="hidden lg:flex items-center gap-2 shrink-0">
               {viewControls}
             </div>
           </>
@@ -432,12 +432,12 @@ export default function FilterBar() {
 
       {/* Mobile: collapsible panels — only one shown at a time */}
       {!selectionMode && mobilePanel === 'filters' && (
-        <div className="sm:hidden pb-1">
+        <div className="lg:hidden pb-1">
           {filterControls}
         </div>
       )}
       {!selectionMode && mobilePanel === 'views' && (
-        <div className="sm:hidden pb-1">
+        <div className="lg:hidden pb-1">
           {viewControls}
         </div>
       )}
