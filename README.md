@@ -1,43 +1,33 @@
 # Bookie
 
-Self-hosted ebook manager
+Bookie is a stupidly simple eBook management, designed for those who only need to organize books and send files to their eReader.
+
+<img width="100%" alt="image" src="https://github.com/user-attachments/assets/4c2c60f5-c55a-432c-af33-ed4fe8b4253a" />
 
 ## Features
 
-- Upload and organize EPUB, PDF, MOBI, AZW3, and CBZ files
-- Automatic metadata fetching from Google Books, Open Library, Apple Books, and GoodReads
-- Cover image extraction, search, and embedding back into EPUB files
-- Send to eReader via SMTP (supports multiple saved addresses with a default)
-- Smart shelves with rule-based filtering (author, title, format, rating, etc.)
+- Multi-format support (EPUB, PDF, MOBI, AZW3, CBZ, etc.)
+- Automatic metadata fetching
+- Cover image extraction, search, and embedding
+- Send to eReader via SMTP
 - Configurable file rename schemes and folder organization
-- PWA support (installable on iOS and Android)
-
-## Quick Start
-
-```bash
-docker run -d \
-  --name bookie \
-  -p 5000:5000 \
-  -v bookie-data:/app/data \
-  ghcr.io/dumpstarrfire/bookie:latest
-```
-
-Then open http://localhost:5000 in your browser.
+- PWA support
+- Dark & Light mode for the UI
+- Tagging (acts like shelves, but like complicated)
 
 ## Docker Compose
 
 ```yaml
 services:
   bookie:
-    image: ghcr.io/dumpstarrfire/bookie:latest
+    container_name: bookie
+    image: ghcr.io/sweatyeggs69/bookie:latest
     ports:
       - "5000:5000"
     volumes:
       - /path/to/config:/app/data
     restart: unless-stopped
 
-volumes:
-  bookie-data:
 ```
 
 ## License
