@@ -17,7 +17,7 @@ Bookie is a stupidly simple eBook management, designed for those who only need t
 - Series support
 
 ## Metadata Basics
-### Everything you need for eReader-relevant metadata
+Everything you need for eReader-relevant metadata
 
 <img width="100%" alt="image" src="https://github.com/user-attachments/assets/9d74ab24-ccd5-47b9-a366-6731eb7e1661" />
 
