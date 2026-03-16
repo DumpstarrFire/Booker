@@ -144,7 +144,7 @@ from flask import (
 )
 from werkzeug.utils import secure_filename
 
-from models import db, Book, Shelf, ShelfBook, Settings, EmailAddress, Tag, BookTag
+from models import db, Book, Settings, EmailAddress, Tag, BookTag
 from auth import login_required, register_auth_routes
 import scraper
 import covers as cover_mgr
@@ -271,17 +271,6 @@ def create_app():
         series_filter = request.args.get("series")
         if series_filter:
             query = query.filter(Book.series == series_filter)
-        shelf_id = request.args.get("shelf_id", type=int)
-        if shelf_id:
-            shelf = Shelf.query.get(shelf_id)
-            if shelf and shelf.is_smart:
-                try:
-                    rules = json.loads(shelf.rules or "[]")
-                except Exception:
-                    rules = []
-                query = _build_smart_query(query, rules, shelf.combination or "all")
-            else:
-                query = query.join(ShelfBook).filter(ShelfBook.shelf_id == shelf_id)
         lang = request.args.get("language")
         if lang:
             query = query.filter(Book.language == lang)
@@ -948,104 +937,6 @@ def create_app():
         return jsonify({"success": True})
 
     # -----------------------------------------------------------------------
-    # Shelves
-    # -----------------------------------------------------------------------
-
-    @app.route("/api/shelves", methods=["GET"])
-    @login_required
-    def list_shelves():
-        shelves = Shelf.query.order_by(Shelf.name).all()
-        result = []
-        for s in shelves:
-            if s.is_smart:
-                try:
-                    rules = json.loads(s.rules or "[]")
-                except Exception:
-                    rules = []
-                count = _build_smart_query(Book.query, rules, s.combination or "all").count()
-                result.append(s.to_dict(book_count=count))
-            else:
-                result.append(s.to_dict())
-        return jsonify(result)
-
-    @app.route("/api/shelves", methods=["POST"])
-    @login_required
-    def create_shelf():
-        data = request.get_json(force=True)
-        name = (data.get("name") or "").strip()
-        if not name:
-            return jsonify({"error": "Name is required"}), 400
-        if Shelf.query.filter_by(name=name).first():
-            return jsonify({"error": "Shelf name already exists"}), 409
-        shelf = Shelf(
-            name=name,
-            description=data.get("description", ""),
-            color=data.get("color", "#D0BCFF"),
-            icon=data.get("icon", "shelf"),
-            is_smart=bool(data.get("is_smart", False)),
-            rules=data.get("rules", "[]"),
-            combination=data.get("combination", "all"),
-        )
-        db.session.add(shelf)
-        db.session.commit()
-        return jsonify(shelf.to_dict()), 201
-
-    @app.route("/api/shelves/<int:shelf_id>", methods=["PUT"])
-    @login_required
-    def update_shelf(shelf_id):
-        shelf = Shelf.query.get_or_404(shelf_id)
-        data = request.get_json(force=True)
-        for f in ("name", "description", "color", "icon", "is_smart", "rules", "combination"):
-            if f in data:
-                setattr(shelf, f, data[f])
-        db.session.commit()
-        return jsonify(shelf.to_dict())
-
-    @app.route("/api/shelves/<int:shelf_id>", methods=["DELETE"])
-    @login_required
-    def delete_shelf(shelf_id):
-        shelf = Shelf.query.get_or_404(shelf_id)
-        db.session.delete(shelf)
-        db.session.commit()
-        return jsonify({"success": True})
-
-    @app.route("/api/shelves/<int:shelf_id>/books", methods=["POST"])
-    @login_required
-    def add_book_to_shelf(shelf_id):
-        Shelf.query.get_or_404(shelf_id)
-        data = request.get_json(force=True)
-        book_ids = data.get("book_ids") or ([data["book_id"]] if "book_id" in data else [])
-        added = 0
-        for bid in book_ids:
-            if not ShelfBook.query.filter_by(shelf_id=shelf_id, book_id=bid).first():
-                db.session.add(ShelfBook(shelf_id=shelf_id, book_id=bid))
-                added += 1
-        db.session.commit()
-        return jsonify({"added": added})
-
-    @app.route("/api/shelves/<int:shelf_id>/books/<int:book_id>", methods=["DELETE"])
-    @login_required
-    def remove_book_from_shelf(shelf_id, book_id):
-        sb = ShelfBook.query.filter_by(shelf_id=shelf_id, book_id=book_id).first_or_404()
-        db.session.delete(sb)
-        db.session.commit()
-        return jsonify({"success": True})
-
-    @app.route("/api/shelves/<int:shelf_id>/books", methods=["GET"])
-    @login_required
-    def list_shelf_books(shelf_id):
-        shelf = Shelf.query.get_or_404(shelf_id)
-        if shelf.is_smart:
-            try:
-                rules = json.loads(shelf.rules or "[]")
-            except Exception:
-                rules = []
-            query = _build_smart_query(Book.query, rules, shelf.combination or "all")
-            return jsonify([b.to_dict() for b in query.all()])
-        sbs = ShelfBook.query.filter_by(shelf_id=shelf_id).all()
-        return jsonify([sb.book.to_dict() for sb in sbs])
-
-    # -----------------------------------------------------------------------
     # Email Addresses
     # -----------------------------------------------------------------------
 
@@ -1263,7 +1154,6 @@ def create_app():
     @login_required
     def stats():
         total_books = Book.query.count()
-        total_shelves = Shelf.query.count()
         formats = db.session.query(Book.file_format, db.func.count()).group_by(Book.file_format).all()
         languages = (
             db.session.query(Book.language, db.func.count())
@@ -1274,7 +1164,6 @@ def create_app():
         total_size = db.session.query(db.func.sum(Book.file_size)).scalar() or 0
         return jsonify({
             "total_books": total_books,
-            "total_shelves": total_shelves,
             "formats": {fmt: cnt for fmt, cnt in formats if fmt},
             "languages": {lang: cnt for lang, cnt in languages},
             "total_size_bytes": total_size,
@@ -1357,9 +1246,6 @@ def _migrate_db(app):
     migrations = [
         "ALTER TABLE books ADD COLUMN series TEXT",
         "ALTER TABLE books ADD COLUMN series_order REAL",
-        "ALTER TABLE shelves ADD COLUMN is_smart BOOLEAN DEFAULT 0",
-        "ALTER TABLE shelves ADD COLUMN rules TEXT DEFAULT '[]'",
-        "ALTER TABLE shelves ADD COLUMN combination TEXT DEFAULT 'all'",
         "CREATE TABLE IF NOT EXISTS tags (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE)",
         "CREATE TABLE IF NOT EXISTS book_tags (id INTEGER PRIMARY KEY AUTOINCREMENT, book_id INTEGER REFERENCES books(id), tag_id INTEGER REFERENCES tags(id), UNIQUE(book_id, tag_id))",
     ]
@@ -1396,42 +1282,6 @@ def _apply_metadata(book: Book, meta: dict, replace_missing_only: bool = None):
                 if cf:
                     book.cover_filename = cf
     db.session.commit()
-
-
-def _build_smart_query(query, rules: list, combination: str):
-    """Apply smart shelf rules to a Book query."""
-    filters = []
-    for rule in rules:
-        field = rule.get("field", "")
-        op = rule.get("op", "")
-        value = rule.get("value", "")
-        if not field or not op or value == "":
-            continue
-        col = getattr(Book, field, None)
-        if col is None:
-            continue
-        try:
-            if op == "contains":
-                filters.append(col.ilike(f"%{value}%"))
-            elif op == "equals":
-                filters.append(col.ilike(value))
-            elif op == "startswith":
-                filters.append(col.ilike(f"{value}%"))
-            elif op == "before":
-                filters.append(col < str(value))
-            elif op == "after":
-                filters.append(col > str(value))
-            elif op == "gte":
-                filters.append(col >= float(value))
-            elif op == "lte":
-                filters.append(col <= float(value))
-        except Exception:
-            continue
-    if not filters:
-        return query
-    if combination == "any":
-        return query.filter(db.or_(*filters))
-    return query.filter(db.and_(*filters))
 
 
 def _auto_fetch_metadata(book: Book):

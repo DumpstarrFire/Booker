@@ -74,7 +74,6 @@ class Book(db.Model):
     )
 
     # Relations
-    shelf_books = db.relationship("ShelfBook", back_populates="book", cascade="all, delete-orphan")
     book_tags = db.relationship("BookTag", back_populates="book", cascade="all, delete-orphan", lazy="joined")
 
     __table_args__ = (
@@ -108,50 +107,6 @@ class Book(db.Model):
             "date_modified": self.date_modified.isoformat() if self.date_modified else None,
             "tags": [bt.tag.name for bt in self.book_tags],
         }
-
-
-class Shelf(db.Model):
-    __tablename__ = "shelves"
-
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(128), nullable=False, unique=True)
-    description = db.Column(db.String(512))
-    color = db.Column(db.String(16), default="#D0BCFF")
-    icon = db.Column(db.String(64), default="shelf")
-    date_created = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    is_smart = db.Column(db.Boolean, default=False)
-    rules = db.Column(db.Text, default="[]")
-    combination = db.Column(db.String(8), default="all")
-
-    shelf_books = db.relationship("ShelfBook", back_populates="shelf", cascade="all, delete-orphan")
-
-    def to_dict(self, book_count=None):
-        return {
-            "id": self.id,
-            "name": self.name,
-            "description": self.description,
-            "color": self.color,
-            "icon": self.icon,
-            "is_smart": self.is_smart,
-            "rules": self.rules or "[]",
-            "combination": self.combination or "all",
-            "book_count": book_count if book_count is not None else len(self.shelf_books),
-            "date_created": self.date_created.isoformat() if self.date_created else None,
-        }
-
-
-class ShelfBook(db.Model):
-    __tablename__ = "shelf_books"
-
-    id = db.Column(db.Integer, primary_key=True)
-    shelf_id = db.Column(db.Integer, db.ForeignKey("shelves.id"), nullable=False)
-    book_id = db.Column(db.Integer, db.ForeignKey("books.id"), nullable=False)
-    date_added = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-
-    shelf = db.relationship("Shelf", back_populates="shelf_books")
-    book = db.relationship("Book", back_populates="shelf_books")
-
-    __table_args__ = (db.UniqueConstraint("shelf_id", "book_id"),)
 
 
 class EmailAddress(db.Model):
