@@ -361,6 +361,20 @@ export function setCoverFromUrl(bookId: number, url: string): Promise<Book> {
   })
 }
 
+export function uploadCoverFile(bookId: number, file: File): Promise<Book> {
+  const formData = new FormData()
+  formData.append('cover', file)
+  return fetch(`/api/books/${bookId}/cover`, {
+    method: 'POST', credentials: 'include', body: formData,
+  }).then(async r => {
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}))
+      throw new Error((body as { error?: string }).error ?? `Upload failed (HTTP ${r.status})`)
+    }
+    return r.json() as Promise<Book>
+  })
+}
+
 export function embedCover(bookId: number): Promise<{ success: boolean }> {
   return api<{ success: boolean }>(`/api/books/${bookId}/cover/embed`, { method: 'POST' })
 }
@@ -465,6 +479,7 @@ export default {
   setLogLevel,
   // Cover extended
   setCoverFromUrl,
+  uploadCoverFile,
   embedCover,
   // Send test email
   sendTestEmail,

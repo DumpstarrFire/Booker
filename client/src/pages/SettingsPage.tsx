@@ -4,11 +4,15 @@ import { Save, Plus, Trash2, Loader2, AlertCircle, Key, Mail, RefreshCw, Downloa
 import { useToast } from '../App'
 import * as api from '../api/client'
 import type { EmailAddress, Stats } from '../types'
+import { useStore } from '../store'
 
 type Tab = 'email' | 'library' | 'metadata' | 'logs' | 'account'
+const VALID_TABS: Tab[] = ['email', 'library', 'metadata', 'logs', 'account']
 
 export default function SettingsPage() {
-  const [tab, setTab] = useState<Tab>('email')
+  const { settingsTab, setSettingsTab } = useStore()
+  const tab = (VALID_TABS.includes(settingsTab as Tab) ? settingsTab : 'email') as Tab
+  const setTab = (t: Tab) => setSettingsTab(t)
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'email',    label: 'Email / SMTP' },

@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2, BookOpen } from 'lucide-react'
 import { useStore } from '../store'
@@ -8,7 +9,7 @@ import BookListItem from '../components/BookListItem'
 import BookDialog from '../components/BookDialog'
 
 export default function LibraryPage() {
-  const { filters, page, setPage, viewMode, gridSize, selectedBookId, setSelectedBookId } = useStore()
+  const { filters, page, setPage, viewMode, gridSize, selectedBookId, setSelectedBookId, setVisibleBookIds } = useStore()
 
   const queryKey = ['books', filters, page]
   const { data, isFetching, isError, error } = useQuery({
@@ -30,6 +31,11 @@ export default function LibraryPage() {
   const books = data?.books ?? []
   const total = data?.total ?? 0
   const pages = data?.pages ?? 1
+
+  // Keep store in sync so shift-click range selection works
+  useEffect(() => {
+    setVisibleBookIds(books.map(b => b.id))
+  }, [books, setVisibleBookIds])
 
   return (
     <div>

@@ -32,7 +32,7 @@ export default function BookListItem({ book, onClick }: BookListItemProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [sendOpen, setSendOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
-  const { selectionMode, selectedBookIds, toggleBookSelection } = useStore()
+  const { selectionMode, selectedBookIds, toggleBookSelection, selectRangeBooks, lastSelectedId, visibleBookIds } = useStore()
 
   const coverUrl = book.cover_filename && !imgError
     ? `/api/books/${book.id}/cover`
@@ -56,9 +56,22 @@ export default function BookListItem({ book, onClick }: BookListItemProps) {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [menuOpen])
 
-  const handleRowClick = () => {
-    if (selectionMode) toggleBookSelection(book.id)
-    else onClick()
+  const handleRowClick = (e?: React.MouseEvent) => {
+    if (selectionMode) {
+      if (e?.shiftKey && lastSelectedId !== null) {
+        const fromIdx = visibleBookIds.indexOf(lastSelectedId)
+        const toIdx = visibleBookIds.indexOf(book.id)
+        if (fromIdx !== -1 && toIdx !== -1) {
+          const start = Math.min(fromIdx, toIdx)
+          const end = Math.max(fromIdx, toIdx)
+          selectRangeBooks(visibleBookIds.slice(start, end + 1))
+          return
+        }
+      }
+      toggleBookSelection(book.id)
+    } else {
+      onClick()
+    }
   }
 
   return (
@@ -75,7 +88,7 @@ export default function BookListItem({ book, onClick }: BookListItemProps) {
         {selectionMode && (
           <button
             type="button"
-            onClick={handleRowClick}
+            onClick={e => handleRowClick(e)}
             className={[
               'shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors',
               isSelected ? 'bg-accent border-accent' : 'border-line-strong hover:border-accent',
@@ -90,7 +103,7 @@ export default function BookListItem({ book, onClick }: BookListItemProps) {
         <div
           role="button"
           tabIndex={0}
-          onClick={handleRowClick}
+          onClick={e => handleRowClick(e)}
           onKeyDown={e => e.key === 'Enter' && handleRowClick()}
           className="flex items-center gap-3 flex-1 min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded cursor-pointer"
           aria-label={`Open ${book.title ?? book.filename}`}

@@ -7,6 +7,7 @@ import Dialog from './Dialog'
 import MetaDialog from './MetaDialog'
 import CoverDialog from './CoverDialog'
 import Spinner from './Spinner'
+import { useToast } from '../App'
 
 interface BookDialogProps {
   bookId: number
@@ -87,6 +88,7 @@ function TagDropdown({ allTags, bookTags, onTagAdded, onTagRemoved }: TagDropdow
 
 export default function BookDialog({ bookId, onClose, onDelete }: BookDialogProps) {
   const qc = useQueryClient()
+  const { addToast } = useToast()
 
   const { data: book, isLoading, isError } = useQuery<Book>({
     queryKey: ['book', bookId],
@@ -110,10 +112,24 @@ export default function BookDialog({ bookId, onClose, onDelete }: BookDialogProp
   const [series, setSeries] = useState('')
   const [seriesOrder, setSeriesOrder] = useState('')
   const [imgError, setImgError] = useState(false)
-  const [metaCoverUrl, setMetaCoverUrl] = useState<string | null>(null)
+
+  // Pending cover — set from CoverDialog selection or metadata result
+  // pendingCoverUrl: a remote URL to apply on save
+  // pendingCoverFile: a local file to upload on save
+  // pendingCoverPreview: object URL for file preview (managed separately)
+  const [pendingCoverUrl, setPendingCoverUrl] = useState<string | null>(null)
+  const [pendingCoverFile, setPendingCoverFile] = useState<File | null>(null)
+  const [pendingCoverPreview, setPendingCoverPreview] = useState<string | null>(null)
+  const objectUrlRef = useRef<string | null>(null)
+
   const [showMetaDialog, setShowMetaDialog] = useState(false)
   const [showCoverDialog, setShowCoverDialog] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+
+  // Clean up object URLs on unmount
+  useEffect(() => {
+    return () => { if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current) }
+  }, [])
 
   // Populate form when book loads
   useEffect(() => {
@@ -127,6 +143,30 @@ export default function BookDialog({ bookId, onClose, onDelete }: BookDialogProp
     }
   }, [book])
 
+  function setPendingCover(cover: { url: string } | { file: File }) {
+    // Clean up any previous object URL
+    if (objectUrlRef.current) { URL.revokeObjectURL(objectUrlRef.current); objectUrlRef.current = null }
+    if ('file' in cover) {
+      const objUrl = URL.createObjectURL(cover.file)
+      objectUrlRef.current = objUrl
+      setPendingCoverFile(cover.file)
+      setPendingCoverUrl(null)
+      setPendingCoverPreview(objUrl)
+    } else {
+      setPendingCoverFile(null)
+      setPendingCoverUrl(cover.url)
+      setPendingCoverPreview(cover.url)
+    }
+    setImgError(false)
+  }
+
+  function clearPendingCover() {
+    if (objectUrlRef.current) { URL.revokeObjectURL(objectUrlRef.current); objectUrlRef.current = null }
+    setPendingCoverFile(null)
+    setPendingCoverUrl(null)
+    setPendingCoverPreview(null)
+  }
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       const updated = await api.updateBook(bookId, {
@@ -136,17 +176,23 @@ export default function BookDialog({ bookId, onClose, onDelete }: BookDialogProp
         series: series || null,
         series_order: seriesOrder !== '' ? Number(seriesOrder) : null,
       })
-      // Apply cover from metadata if setting enabled and a cover URL is pending
-      if (metaCoverUrl && settings?.apply_meta_cover !== 'false') {
-        await api.setCoverFromUrl(bookId, metaCoverUrl).catch(() => {})
+      // Apply pending cover if any
+      if (pendingCoverFile) {
+        await api.uploadCoverFile(bookId, pendingCoverFile).catch(() => {})
+        if (book?.file_format?.toLowerCase() === 'epub') {
+          await api.embedCover(bookId).catch(() => {})
+        }
+      } else if (pendingCoverUrl) {
+        await api.setCoverFromUrl(bookId, pendingCoverUrl).catch(() => {})
       }
       return updated
     },
-    onSuccess: (updated) => {
-      qc.setQueryData(['book', bookId], updated)
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['book', bookId] })
       qc.invalidateQueries({ queryKey: ['books'] })
       onClose()
     },
+    onError: (e: Error) => addToast('error', e.message),
   })
 
   const deleteMutation = useMutation({
@@ -180,10 +226,9 @@ export default function BookDialog({ bookId, onClose, onDelete }: BookDialogProp
     deleteMutation.mutate()
   }
 
-  // Show metaCoverUrl preview if available, otherwise stored cover
-  const coverUrl = metaCoverUrl
-    ? metaCoverUrl
-    : (book?.cover_filename && !imgError ? `/api/books/${bookId}/cover` : null)
+  // Cover preview: pending takes priority, then stored cover
+  const coverUrl = pendingCoverPreview
+    ?? (book?.cover_filename && !imgError ? `/api/books/${bookId}/cover` : null)
 
   const isSaving = saveMutation.isPending
   const isDeleting = deleteMutation.isPending
@@ -249,7 +294,7 @@ export default function BookDialog({ bookId, onClose, onDelete }: BookDialogProp
                   <img
                     src={coverUrl}
                     alt={book.title ?? book.filename}
-                    onError={() => { if (!metaCoverUrl) setImgError(true) }}
+                    onError={() => { if (!pendingCoverPreview) setImgError(true) }}
                     className="w-full h-full object-cover"
                     draggable={false}
                   />
@@ -257,8 +302,17 @@ export default function BookDialog({ bookId, onClose, onDelete }: BookDialogProp
                   <BookOpen size={40} className="text-ink-faint" />
                 )}
               </div>
-              {metaCoverUrl && (
-                <p className="text-[10px] text-accent text-center">Cover from metadata (save to apply)</p>
+              {pendingCoverPreview && (
+                <div className="flex flex-col items-center gap-1 w-full">
+                  <p className="text-[10px] text-accent text-center leading-tight">New cover selected — click Save to apply</p>
+                  <button
+                    type="button"
+                    onClick={clearPendingCover}
+                    className="text-[10px] text-ink-muted hover:text-ink underline"
+                  >
+                    Clear
+                  </button>
+                </div>
               )}
               <button
                 type="button"
@@ -343,16 +397,10 @@ export default function BookDialog({ bookId, onClose, onDelete }: BookDialogProp
 
       {showCoverDialog && book && (
         <CoverDialog
-          bookId={bookId}
           bookTitle={book.title ?? undefined}
           bookAuthor={book.author ?? undefined}
-          fileFormat={book.file_format ?? undefined}
-          onClose={() => {
-            setShowCoverDialog(false)
-            setImgError(false)
-            setMetaCoverUrl(null)
-            qc.invalidateQueries({ queryKey: ['book', bookId] })
-          }}
+          onClose={() => setShowCoverDialog(false)}
+          onSelected={cover => { setPendingCover(cover); setShowCoverDialog(false) }}
         />
       )}
 
@@ -366,7 +414,7 @@ export default function BookDialog({ bookId, onClose, onDelete }: BookDialogProp
             if (result.published_date) setPublishedDate(result.published_date)
             // Apply cover from metadata if setting is on (default: apply unless explicitly disabled)
             const applyCover = settings?.apply_meta_cover !== 'false'
-            if (applyCover && result.cover_url) setMetaCoverUrl(result.cover_url)
+            if (applyCover && result.cover_url) setPendingCover({ url: result.cover_url })
           }}
         />
       )}

@@ -1,18 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
-import { useQueryClient, useMutation } from '@tanstack/react-query'
 import { Search, Upload, Link, X, Check } from 'lucide-react'
-import * as api from '../api/client'
-import type { Book } from '../types'
 import Dialog from './Dialog'
 import Spinner from './Spinner'
-import { useToast } from '../App'
 
 interface Props {
-  bookId: number
   bookTitle?: string
   bookAuthor?: string
-  fileFormat?: string
   onClose: () => void
+  onSelected: (cover: { url: string } | { file: File }) => void
 }
 
 interface CoverResult {
@@ -28,9 +23,7 @@ const SOURCE_LABELS: Record<string, string> = {
   itunes: 'iTunes',
 }
 
-export default function CoverDialog({ bookId, bookTitle, bookAuthor, fileFormat, onClose }: Props) {
-  const qc = useQueryClient()
-  const { addToast } = useToast()
+export default function CoverDialog({ bookTitle, bookAuthor, onClose, onSelected }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [searchQuery, setSearchQuery] = useState([bookTitle, bookAuthor].filter(Boolean).join(' '))
@@ -42,43 +35,16 @@ export default function CoverDialog({ bookId, bookTitle, bookAuthor, fileFormat,
   const [previewFile, setPreviewFile] = useState<File | null>(null)
   const [previewMode, setPreviewMode] = useState<'search' | 'url' | 'file' | null>(null)
 
+  // Revoke any object URLs on cleanup
+  const objectUrlRef = useRef<string | null>(null)
+  useEffect(() => {
+    return () => { if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current) }
+  }, [])
+
   // Auto-search on mount when there's a query
   useEffect(() => {
     if (searchQuery.trim()) searchCovers()
   }, [])  // eslint-disable-line react-hooks/exhaustive-deps
-
-  const uploadMutation = useMutation({
-    mutationFn: async () => {
-      if (previewFile) {
-        const formData = new FormData()
-        formData.append('cover', previewFile)
-        const res = await fetch(`/api/books/${bookId}/cover`, {
-          method: 'POST', credentials: 'include', body: formData,
-        })
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}))
-          throw new Error(body?.error ?? `Upload failed (HTTP ${res.status})`)
-        }
-        return res.json() as Promise<Book>
-      } else {
-        const url = selectedUrl || manualUrl.trim()
-        if (!url) throw new Error('No cover selected')
-        return api.setCoverFromUrl(bookId, url)
-      }
-    },
-    onSuccess: async (book) => {
-      if (fileFormat?.toLowerCase() === 'epub') {
-        try { await api.embedCover(bookId); addToast('success', 'Cover saved and embedded in EPUB') }
-        catch { addToast('success', 'Cover saved (embed failed)') }
-      } else {
-        addToast('success', 'Cover saved')
-      }
-      qc.setQueryData(['book', bookId], book)
-      qc.invalidateQueries({ queryKey: ['books'] })
-      onClose()
-    },
-    onError: (e: Error) => addToast('error', e.message),
-  })
 
   async function searchCovers() {
     const q = searchQuery.trim()
@@ -90,7 +56,7 @@ export default function CoverDialog({ bookId, bookTitle, bookAuthor, fileFormat,
         .then(r => r.json()) as CoverResult[]
       setCoverResults(Array.isArray(results) ? results.filter(r => r.cover_url) : [])
     } catch {
-      addToast('error', 'Search failed')
+      console.error('Cover search failed')
     } finally {
       setSearching(false)
     }
@@ -109,15 +75,29 @@ export default function CoverDialog({ bookId, bookTitle, bookAuthor, fileFormat,
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-    setPreviewFile(file); setPreviewUrl(URL.createObjectURL(file)); setSelectedUrl(null); setManualUrl(''); setPreviewMode('file')
+    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
+    const objUrl = URL.createObjectURL(file)
+    objectUrlRef.current = objUrl
+    setPreviewFile(file); setPreviewUrl(objUrl); setSelectedUrl(null); setManualUrl(''); setPreviewMode('file')
     e.target.value = ''
   }
 
   function clearPreview() {
+    if (objectUrlRef.current) { URL.revokeObjectURL(objectUrlRef.current); objectUrlRef.current = null }
     setPreviewUrl(null); setPreviewFile(null); setSelectedUrl(null); setPreviewMode(null)
   }
 
-  const canSave = previewMode !== null && (previewFile || selectedUrl || manualUrl.trim())
+  function handleSelect() {
+    if (previewFile) {
+      onSelected({ file: previewFile })
+    } else {
+      const url = selectedUrl || manualUrl.trim()
+      if (url) onSelected({ url })
+    }
+    onClose()
+  }
+
+  const canSelect = previewMode !== null && (previewFile || selectedUrl || manualUrl.trim())
 
   const footer = (
     <div className="flex items-center justify-between gap-3">
@@ -126,12 +106,12 @@ export default function CoverDialog({ bookId, bookTitle, bookAuthor, fileFormat,
       </button>
       <button
         type="button"
-        onClick={() => uploadMutation.mutate()}
-        disabled={!canSave || uploadMutation.isPending}
+        onClick={handleSelect}
+        disabled={!canSelect}
         className="flex items-center gap-1.5 px-4 py-2 rounded text-sm font-medium bg-accent hover:bg-accent-hover text-white transition-colors disabled:opacity-50"
       >
-        {uploadMutation.isPending ? <Spinner size={14} className="text-white" /> : <Check size={14} />}
-        Set Cover
+        <Check size={14} />
+        Select
       </button>
     </div>
   )
@@ -202,9 +182,9 @@ export default function CoverDialog({ bookId, bookTitle, bookAuthor, fileFormat,
         {/* Selected preview strip */}
         {previewUrl && (
           <div className="flex items-center gap-3 px-3 py-2 bg-surface-raised rounded-lg">
-            <img src={previewUrl} alt="Selected" className="h-12 w-8 object-cover rounded shrink-0" />
+            <img src={previewUrl} alt="Selected" className="h-16 w-11 object-cover rounded shrink-0 border border-line" />
             <p className="text-xs text-ink-muted flex-1 truncate">
-              {previewMode === 'file' ? previewFile?.name : 'Cover selected'}
+              {previewMode === 'file' ? previewFile?.name : 'Cover selected — click Select to preview'}
             </p>
             <button type="button" onClick={clearPreview} className="text-ink-muted hover:text-ink shrink-0">
               <X size={14} />

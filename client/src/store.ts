@@ -2,11 +2,12 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Filters, User } from './types'
 
-// ─── Persisted preferences (viewMode, gridSize) ───────────────────────────────
+// ─── Persisted preferences ────────────────────────────────────────────────────
 
 interface PersistedPrefs {
   viewMode: 'grid' | 'list'
   gridSize: number
+  settingsTab: string
 }
 
 // ─── Full store shape ─────────────────────────────────────────────────────────
@@ -32,6 +33,9 @@ interface StoreState extends PersistedPrefs {
   setViewMode: (mode: 'grid' | 'list') => void
   setGridSize: (size: number) => void
 
+  // Settings tab (persisted)
+  setSettingsTab: (tab: string) => void
+
   // Selected book (detail panel / drawer)
   selectedBookId: number | null
   setSelectedBookId: (id: number | null) => void
@@ -43,10 +47,15 @@ interface StoreState extends PersistedPrefs {
   // Mass selection
   selectionMode: boolean
   selectedBookIds: number[]
+  lastSelectedId: number | null
+  visibleBookIds: number[]
   setSelectionMode: (mode: boolean) => void
   toggleBookSelection: (id: number) => void
+  selectRangeBooks: (ids: number[]) => void
   clearSelection: () => void
   selectAllBooks: (ids: number[]) => void
+  setLastSelectedId: (id: number | null) => void
+  setVisibleBookIds: (ids: number[]) => void
 }
 
 // ─── Default filter state ─────────────────────────────────────────────────────
@@ -93,6 +102,10 @@ export const useStore = create<StoreState>()(
       gridSize: 160,
       setGridSize: (gridSize) => set({ gridSize }),
 
+      // Settings tab
+      settingsTab: 'email',
+      setSettingsTab: (settingsTab) => set({ settingsTab }),
+
       // Selected book
       selectedBookId: null,
       setSelectedBookId: (selectedBookId) => set({ selectedBookId }),
@@ -109,20 +122,30 @@ export const useStore = create<StoreState>()(
       // Mass selection
       selectionMode: false,
       selectedBookIds: [],
-      setSelectionMode: (mode) => set({ selectionMode: mode, selectedBookIds: [] }),
+      lastSelectedId: null,
+      visibleBookIds: [],
+      setSelectionMode: (mode) => set({ selectionMode: mode, selectedBookIds: [], lastSelectedId: null }),
       toggleBookSelection: (id) => set((state) => ({
         selectedBookIds: state.selectedBookIds.includes(id)
           ? state.selectedBookIds.filter(i => i !== id)
           : [...state.selectedBookIds, id],
+        lastSelectedId: id,
       })),
-      clearSelection: () => set({ selectedBookIds: [] }),
+      selectRangeBooks: (ids) => set((state) => {
+        const combined = Array.from(new Set([...state.selectedBookIds, ...ids]))
+        return { selectedBookIds: combined, lastSelectedId: ids[ids.length - 1] ?? state.lastSelectedId }
+      }),
+      clearSelection: () => set({ selectedBookIds: [], lastSelectedId: null }),
       selectAllBooks: (ids) => set({ selectedBookIds: ids }),
+      setLastSelectedId: (id) => set({ lastSelectedId: id }),
+      setVisibleBookIds: (ids) => set({ visibleBookIds: ids }),
     }),
     {
       name: 'bookie-prefs',
       partialize: (state: StoreState): PersistedPrefs => ({
         viewMode: state.viewMode,
         gridSize: state.gridSize,
+        settingsTab: state.settingsTab,
       }),
     },
   ),
