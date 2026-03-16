@@ -16,7 +16,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
 import { useStore } from '../store';
-import { useToast } from '../App';
+import { useToast } from '../contexts/toast';
 import SearchBar from './SearchBar';
 
 interface Props {
