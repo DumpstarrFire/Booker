@@ -1,6 +1,7 @@
 """Bookie – Docker ebook manager with Material Design 3 UI."""
 import io
 import json
+import math
 import os
 import re
 import secrets
@@ -146,6 +147,7 @@ from flask import (
 )
 from werkzeug.utils import secure_filename
 
+from sqlalchemy.orm import subqueryload
 from models import db, Book, Settings, EmailAddress, Tag, BookTag
 from auth import login_required, register_auth_routes
 import scraper
@@ -196,6 +198,48 @@ COVERS_DIR = DATA_DIR / "covers"
 ALLOWED_EXTENSIONS = {"epub", "pdf", "mobi", "azw", "azw3", "fb2", "djvu", "cbz", "cbr", "txt"}
 MAX_UPLOAD_MB = 35
 
+# Magic-byte signatures for formats where we can reliably verify content.
+# Extensions not listed here are accepted on extension alone (txt, fb2, mobi, etc.
+# have no universal single-byte signature that is safe to enforce).
+_MAGIC_BYTES: dict[str, list[bytes]] = {
+    "epub": [b"PK\x03\x04"],           # EPUB is a ZIP archive
+    "pdf":  [b"%PDF"],
+    "cbz":  [b"PK\x03\x04"],           # CBZ is a ZIP archive
+    "cbr":  [b"Rar!\x1a\x07\x00",      # RAR v4
+             b"Rar!\x1a\x07\x01\x00",  # RAR v5
+             b"PK\x03\x04"],            # some CBRs are actually ZIPs
+    "djvu": [b"AT&TFORM"],
+}
+_MAGIC_READ_BYTES = 8  # max prefix length we need to read
+
+
+def _magic_ok(file_storage, ext: str) -> bool:
+    """Return True if the uploaded file's header matches the expected format."""
+    sigs = _MAGIC_BYTES.get(ext)
+    if not sigs:
+        return True  # no check defined for this extension
+    header = file_storage.read(_MAGIC_READ_BYTES)
+    file_storage.seek(0)
+    return any(header.startswith(sig) for sig in sigs)
+
+
+def _safe_int(value, default: int) -> int:
+    """Convert *value* to int, returning *default* on failure."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _cleanup_empty_dirs(directory: Path) -> None:
+    """Remove *directory* and its parent if both are empty and not BOOKS_DIR."""
+    try:
+        for folder in [directory, directory.parent]:
+            if folder != BOOKS_DIR and folder.exists() and not any(folder.iterdir()):
+                folder.rmdir()
+    except Exception as exc:
+        logger.debug("Could not remove empty directory %s: %s", directory, exc)
+
 
 def create_app():
     app = Flask(__name__)
@@ -208,6 +252,7 @@ def create_app():
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
     app.config["SESSION_COOKIE_HTTPONLY"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    app.config["SESSION_COOKIE_SECURE"] = not app.debug
 
     db.init_app(app)
 
@@ -447,6 +492,8 @@ def create_app():
         ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
         if ext not in ALLOWED_EXTENSIONS:
             return jsonify({"error": f"Unsupported format: {ext}"}), 400
+        if not _magic_ok(file, ext):
+            return jsonify({"error": f"File content does not match declared format (.{ext})"}), 400
 
         filename = secure_filename(file.filename)
         dest = BOOKS_DIR / filename
@@ -506,8 +553,18 @@ def create_app():
             "series", "series_order", "rating",
         ]
         for f in fields:
-            if f in data:
-                setattr(book, f, data[f])
+            if f not in data:
+                continue
+            val = data[f]
+            # Guard float fields against NaN / Infinity which would corrupt sorting
+            if f in ("series_order", "rating") and val is not None:
+                try:
+                    val = float(val)
+                except (TypeError, ValueError):
+                    return jsonify({"error": f"Invalid value for {f}"}), 400
+                if not math.isfinite(val):
+                    return jsonify({"error": f"{f} must be a finite number"}), 400
+            setattr(book, f, val)
         db.session.commit()
         # Re-apply rename/organize after metadata update
         file_path = BOOKS_DIR / book.filename
@@ -526,13 +583,7 @@ def create_app():
         parent = filepath.parent
         if filepath.exists():
             filepath.unlink()
-        # Clean up empty parent directories (but never BOOKS_DIR itself)
-        try:
-            for folder in [parent, parent.parent]:
-                if folder != BOOKS_DIR and folder.exists() and not any(folder.iterdir()):
-                    folder.rmdir()
-        except Exception:
-            pass
+        _cleanup_empty_dirs(parent)
         cover_mgr.delete_cover(book_id)
         db.session.delete(book)
         db.session.commit()
@@ -551,12 +602,7 @@ def create_app():
             parent = filepath.parent
             if filepath.exists():
                 filepath.unlink()
-            try:
-                for folder in [parent, parent.parent]:
-                    if folder != BOOKS_DIR and folder.exists() and not any(folder.iterdir()):
-                        folder.rmdir()
-            except Exception:
-                pass
+            _cleanup_empty_dirs(parent)
             cover_mgr.delete_cover(book_id)
             db.session.delete(book)
             deleted += 1
@@ -665,7 +711,7 @@ def create_app():
         scheme = Settings.get("rename_scheme", "original")
         custom_tpl = Settings.get("rename_custom_template", "")
         folder_mode = Settings.get("folder_organization", "flat")
-        books = Book.query.all()
+        books = Book.query.yield_per(200)
         results = []
         errors = []
         for book in books:
@@ -710,13 +756,7 @@ def create_app():
                             getattr(book, "series", None), folder_mode
                         )
                         book.filename = new_rel
-                    # Clean up empty old directories
-                    try:
-                        for folder in [old_parent, old_parent.parent]:
-                            if folder != BOOKS_DIR and folder.exists() and not any(folder.iterdir()):
-                                folder.rmdir()
-                    except Exception:
-                        pass
+                    _cleanup_empty_dirs(old_parent)
                     results.append({"id": book.id, "original": original_filename, "new": book.filename, "changed": True})
                 except Exception as e:
                     errors.append({"id": book.id, "original": book.filename, "error": str(e)})
@@ -897,7 +937,8 @@ def create_app():
     @app.route("/api/tags", methods=["GET"])
     @login_required
     def list_tags():
-        tags = Tag.query.order_by(Tag.name).all()
+        # subqueryload fetches all book_tags in one extra query instead of N
+        tags = Tag.query.options(subqueryload(Tag.book_tags)).order_by(Tag.name).all()
         return jsonify([t.to_dict() for t in tags])
 
     @app.route("/api/tags", methods=["POST"])
@@ -1042,7 +1083,7 @@ def create_app():
             return jsonify({"error": "No recipient email set. Add one in Settings → Account."}), 400
 
         smtp_host = Settings.get("smtp_host")
-        smtp_port = int(Settings.get("smtp_port") or 587)
+        smtp_port = _safe_int(Settings.get("smtp_port"), 587)
         smtp_user = Settings.get("smtp_user")
         smtp_password = crypto.decrypt_value(Settings.get("smtp_password") or "", DATA_DIR)
         use_tls = Settings.get("smtp_tls", "true").lower() == "true"
@@ -1118,7 +1159,7 @@ def create_app():
     def test_smtp():
         data = request.get_json(force=True) or {}
         host = data.get("smtp_host") or Settings.get("smtp_host")
-        port = int(data.get("smtp_port") or Settings.get("smtp_port") or 587)
+        port = _safe_int(data.get("smtp_port") or Settings.get("smtp_port"), 587)
         user = data.get("smtp_user") or Settings.get("smtp_user")
         pwd = data.get("smtp_password")
         if not pwd or pwd == "••••••••":
@@ -1136,7 +1177,7 @@ def create_app():
     def test_smtp_send():
         data = request.get_json(force=True) or {}
         host = data.get("smtp_host") or Settings.get("smtp_host")
-        port = int(data.get("smtp_port") or Settings.get("smtp_port") or 587)
+        port = _safe_int(data.get("smtp_port") or Settings.get("smtp_port"), 587)
         user = data.get("smtp_user") or Settings.get("smtp_user")
         pwd = data.get("smtp_password")
         if not pwd or pwd == "••••••••":
@@ -1275,6 +1316,8 @@ def _migrate_db(app):
         "ALTER TABLE books ADD COLUMN series_order REAL",
         "CREATE TABLE IF NOT EXISTS tags (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE)",
         "CREATE TABLE IF NOT EXISTS book_tags (id INTEGER PRIMARY KEY AUTOINCREMENT, book_id INTEGER REFERENCES books(id), tag_id INTEGER REFERENCES tags(id), UNIQUE(book_id, tag_id))",
+        "CREATE INDEX IF NOT EXISTS ix_books_language ON books (language)",
+        "CREATE INDEX IF NOT EXISTS ix_books_series ON books (series)",
     ]
     with app.app_context():
         with db.engine.connect() as conn:
@@ -1282,8 +1325,8 @@ def _migrate_db(app):
                 try:
                     conn.execute(text(stmt))
                     conn.commit()
-                except Exception:
-                    pass  # column already exists
+                except Exception as exc:
+                    logger.debug("Migration skipped (already applied): %s — %s", stmt[:60], exc)
 
 
 def _apply_metadata(book: Book, meta: dict, replace_missing_only: bool = None):

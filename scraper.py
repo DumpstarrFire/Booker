@@ -356,12 +356,23 @@ def search_all_sources(
     return flat
 
 
+_COVER_MAX_BYTES = 10 * 1024 * 1024  # 10 MB — guard against huge/malicious cover URLs
+
+
 def fetch_cover_image(url: str) -> bytes | None:
-    """Download a cover image from a URL."""
+    """Download a cover image from a URL, refusing responses larger than 10 MB."""
     try:
         r = requests.get(url, headers=HEADERS, timeout=15, stream=True)
         r.raise_for_status()
-        return r.content
+        chunks: list[bytes] = []
+        total = 0
+        for chunk in r.iter_content(chunk_size=65536):
+            total += len(chunk)
+            if total > _COVER_MAX_BYTES:
+                logger.warning("Cover download from %s aborted: response exceeded %d bytes", url, _COVER_MAX_BYTES)
+                return None
+            chunks.append(chunk)
+        return b"".join(chunks)
     except Exception as exc:
         logger.warning("Cover download failed from %s: %s", url, exc)
         return None

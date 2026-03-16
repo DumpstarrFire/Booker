@@ -50,7 +50,11 @@ async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   const text = await response.text()
   if (!text) return undefined as unknown as T
-  return JSON.parse(text) as T
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    throw new Error(`Unexpected non-JSON response from server (${response.status})`)
+  }
 }
 
 // ─── Books ────────────────────────────────────────────────────────────────────

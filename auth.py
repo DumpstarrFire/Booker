@@ -124,7 +124,7 @@ def register_auth_routes(app, Settings):
         username = session.get("username", "")
         if not check_credentials(username, current, Settings):
             return jsonify({"error": "Current password incorrect"}), 403
-        if len(new_pass) < 6:
+        if len(new_pass) < 8:
             return jsonify({"error": "Password must be at least 8 characters"}), 400
         set_password(username, new_pass, Settings)
         return jsonify({"success": True})
