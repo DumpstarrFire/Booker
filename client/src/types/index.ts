@@ -140,7 +140,6 @@ export interface EmailAddress {
 
 export interface Stats {
   total_books: number
-  total_shelves: number
   formats: Record<string, number>
   total_size_bytes: number
 }

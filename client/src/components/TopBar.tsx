@@ -41,7 +41,7 @@ export default function TopBar({ onAuthChange }: Props) {
   const { user, view, setView } = useStore();
   const { addToast } = useToast();
   const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: api.getSettings, staleTime: 60_000 });
-  const displayName = (settings?.display_name as string | undefined) || user?.username;
+  const displayName = (typeof settings?.display_name === 'string' && settings.display_name ? settings.display_name : null) || user?.username;
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
@@ -151,7 +151,7 @@ export default function TopBar({ onAuthChange }: Props) {
               <div className="px-3 py-2 border-b border-line">
                 <p className="text-xs text-ink-muted">Signed in as</p>
                 <p className="text-sm font-medium text-ink truncate">{displayName}</p>
-                {!!(settings?.display_name) && !!user?.username && String(settings.display_name) !== user.username && (
+                {typeof settings?.display_name === 'string' && settings.display_name && !!user?.username && settings.display_name !== user.username && (
                   <p className="text-xs text-ink-faint truncate">{user.username}</p>
                 )}
               </div>
