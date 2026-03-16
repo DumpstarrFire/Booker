@@ -16,7 +16,7 @@ export default function BookCard({ book, onClick }: BookCardProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [sendOpen, setSendOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
-  const { selectionMode, selectedBookIds, toggleBookSelection } = useStore()
+  const { selectionMode, selectedBookIds, toggleBookSelection, selectRangeBooks, lastSelectedId, visibleBookIds } = useStore()
 
   const coverUrl = book.cover_filename && !imgError
     ? `/api/books/${book.id}/cover`
@@ -39,9 +39,22 @@ export default function BookCard({ book, onClick }: BookCardProps) {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [menuOpen])
 
-  const handleCardClick = () => {
-    if (selectionMode) toggleBookSelection(book.id)
-    else onClick()
+  const handleCardClick = (e?: React.MouseEvent) => {
+    if (selectionMode) {
+      if (e?.shiftKey && lastSelectedId !== null) {
+        const fromIdx = visibleBookIds.indexOf(lastSelectedId)
+        const toIdx = visibleBookIds.indexOf(book.id)
+        if (fromIdx !== -1 && toIdx !== -1) {
+          const start = Math.min(fromIdx, toIdx)
+          const end = Math.max(fromIdx, toIdx)
+          selectRangeBooks(visibleBookIds.slice(start, end + 1))
+          return
+        }
+      }
+      toggleBookSelection(book.id)
+    } else {
+      onClick()
+    }
   }
 
   const seriesBadge = book.series_order != null ? `#${book.series_order}` : null
@@ -51,7 +64,7 @@ export default function BookCard({ book, onClick }: BookCardProps) {
       <div
         role="button"
         tabIndex={0}
-        onClick={handleCardClick}
+        onClick={e => handleCardClick(e)}
         onKeyDown={e => e.key === 'Enter' && handleCardClick()}
         className={[
           'group relative flex flex-col w-full text-left',

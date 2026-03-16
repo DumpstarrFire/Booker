@@ -1163,9 +1163,10 @@ def create_app():
     SETTINGS_KEYS = [
         "smtp_host", "smtp_port", "smtp_user", "smtp_password",
         "smtp_tls", "smtp_sender",
-        "auto_metadata", "meta_replace_missing",
+        "auto_metadata", "meta_replace_missing", "apply_meta_cover",
         "source_priority", "sources_disabled", "folder_organization",
         "rename_scheme", "rename_custom_template",
+        "display_name",
     ]
 
     _MASKED = "••••••••"
