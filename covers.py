@@ -4,6 +4,7 @@ import os
 import logging
 import zipfile
 import re
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from PIL import Image
 
@@ -52,62 +53,60 @@ def _find_opf(zf: zipfile.ZipFile) -> str | None:
 
 
 def _find_cover_in_opf(zf: zipfile.ZipFile, opf_path: str) -> str | None:
-    """Find cover image href from OPF manifest."""
+    """Find cover image href from OPF manifest using XML parsing (no regex)."""
     try:
-        opf = zf.read(opf_path).decode("utf-8", errors="replace")
-
-        def _item_href(item_tag: str) -> str | None:
-            """Extract href from an <item ...> tag string."""
-            m = re.search(r'\bhref=["\']([^"\']+)["\']', item_tag)
-            return m.group(1) if m else None
-
-        # EPUB3: properties="cover-image"
-        prop_m = re.search(r'<item\b[^>]*\bproperties=["\']cover-image["\'][^>]*/?>',
-                            opf, re.IGNORECASE)
-        if prop_m:
-            href = _item_href(prop_m.group(0))
-            if href:
-                base = str(Path(opf_path).parent)
-                full = str(Path(base) / href) if base != "." else href
-                if full in zf.namelist():
-                    return full
-
-        # EPUB2: <meta name="cover" content="id"/> then look up item by id
-        meta_m = re.search(
-            r'<meta\b[^>]*\bname=["\']cover["\'][^>]*\bcontent=["\']([^"\']+)["\']'
-            r'|<meta\b[^>]*\bcontent=["\']([^"\']+)["\'][^>]*\bname=["\']cover["\']',
-            opf, re.IGNORECASE,
-        )
-        if meta_m:
-            item_id = meta_m.group(1) or meta_m.group(2)
-            item_m = re.search(
-                r'<item\b[^>]*\bid=["\']' + re.escape(item_id) + r'["\'][^>]*/?>',
-                opf, re.IGNORECASE,
-            )
-            if item_m:
-                href = _item_href(item_m.group(0))
-                if href:
-                    base = str(Path(opf_path).parent)
-                    full = str(Path(base) / href) if base != "." else href
-                    if full in zf.namelist():
-                        return full
-
-        # Fallback: item with id containing "cover"
-        cover_id_m = re.search(
-            r'<item\b[^>]*\bid=["\'][^"\']*cover[^"\']*["\'][^>]*/?>',
-            opf, re.IGNORECASE,
-        )
-        if cover_id_m:
-            href = _item_href(cover_id_m.group(0))
-            if href:
-                base = str(Path(opf_path).parent)
-                full = str(Path(base) / href) if base != "." else href
-                if full in zf.namelist():
-                    return full
-
-        return None
+        root = ET.fromstring(zf.read(opf_path))
     except Exception:
         return None
+
+    # Determine the OPF namespace prefix (e.g. "{http://www.idpf.org/2007/opf}")
+    tag = root.tag
+    ns_prefix = tag[: tag.index("}") + 1] if tag.startswith("{") else ""
+
+    manifest = root.find(f"{ns_prefix}manifest")
+    metadata = root.find(f"{ns_prefix}metadata")
+    if manifest is None:
+        return None
+
+    # Build id -> href map from all manifest <item> elements
+    id_to_href: dict[str, str] = {
+        item.get("id", ""): item.get("href", "")
+        for item in manifest
+        if item.get("id") and item.get("href")
+    }
+
+    def _resolve(href: str) -> str | None:
+        base = str(Path(opf_path).parent)
+        full = str(Path(base) / href) if base != "." else href
+        return full if full in zf.namelist() else None
+
+    # EPUB3: <item properties="cover-image" .../>
+    for item in manifest:
+        if "cover-image" in item.get("properties", ""):
+            resolved = _resolve(item.get("href", ""))
+            if resolved:
+                return resolved
+
+    # EPUB2: <meta name="cover" content="item-id"/>
+    if metadata is not None:
+        for meta in metadata:
+            local = meta.tag.split("}")[-1] if "}" in meta.tag else meta.tag
+            if local == "meta" and meta.get("name", "").lower() == "cover":
+                item_id = meta.get("content", "")
+                href = id_to_href.get(item_id, "")
+                if href:
+                    resolved = _resolve(href)
+                    if resolved:
+                        return resolved
+
+    # Fallback: any manifest item whose id contains "cover"
+    for item_id, href in id_to_href.items():
+        if "cover" in item_id.lower():
+            resolved = _resolve(href)
+            if resolved:
+                return resolved
+
+    return None
 
 
 def extract_cover_from_pdf(filepath: str) -> bytes | None:

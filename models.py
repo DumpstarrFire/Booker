@@ -16,7 +16,9 @@ class Tag(db.Model):
         return {
             "id": self.id,
             "name": self.name,
-            "book_count": db.session.query(BookTag).filter_by(tag_id=self.id).count(),
+            # book_tags is a relationship — use len() so callers can control loading
+            # strategy (e.g. subqueryload) instead of firing an extra COUNT per tag.
+            "book_count": len(self.book_tags),
         }
 
 
@@ -81,6 +83,8 @@ class Book(db.Model):
         db.Index("ix_books_author", "author"),
         db.Index("ix_books_file_format", "file_format"),
         db.Index("ix_books_date_added", "date_added"),
+        db.Index("ix_books_language", "language"),
+        db.Index("ix_books_series", "series"),
     )
 
     def to_dict(self):

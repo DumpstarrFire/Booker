@@ -18,6 +18,11 @@ export default function SettingsPage() {
   const [tab, setTabState] = useState<Tab>(getHashTab)
 
   useEffect(() => {
+    // Set hash on mount if missing or invalid
+    const hash = window.location.hash.replace('#', '')
+    if (!VALID_TABS.includes(hash as Tab)) {
+      window.location.replace(`${window.location.pathname}${window.location.search}#${DEFAULT_TAB}`)
+    }
     const onHashChange = () => setTabState(getHashTab())
     window.addEventListener('hashchange', onHashChange)
     return () => window.removeEventListener('hashchange', onHashChange)
@@ -263,7 +268,8 @@ function LibraryTab() {
     onError: (e: Error) => addToast('error', e.message),
   })
 
-  function formatBytes(bytes: number) {
+  function formatBytes(bytes: number | null | undefined) {
+    if (bytes == null || !isFinite(bytes) || bytes < 0) return '—'
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
     if (bytes < 1024 ** 3) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
     return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`
@@ -529,10 +535,17 @@ function MetadataTab() {
 
 function LogsTab() {
   const { addToast } = useToast()
-  const [level, setLevel] = useState(() => localStorage.getItem('logLevel') || 'INFO')
+  const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: api.getSettings })
+  const [level, setLevel] = useState('INFO')
   const [logs, setLogs] = useState<string>('')
   const [loading, setLoading] = useState(false)
   const logRef = useRef<HTMLPreElement>(null)
+
+  // Sync level from persisted settings once loaded
+  useEffect(() => {
+    const saved = (settings as Record<string, string> | undefined)?.log_level
+    if (saved) setLevel(saved)
+  }, [(settings as Record<string, string> | undefined)?.log_level])
 
   async function loadLogs(lvl = level) {
     setLoading(true)
@@ -549,7 +562,7 @@ function LogsTab() {
   }
 
   async function changeLevel(lvl: string) {
-    setLevel(lvl); localStorage.setItem('logLevel', lvl)
+    setLevel(lvl)
     try { await api.setLogLevel(lvl) } catch { /* ignore */ }
     loadLogs(lvl)
   }
