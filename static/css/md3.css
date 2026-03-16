@@ -178,24 +178,34 @@ body {
   display: flex;
   flex: 1;
   overflow: hidden;
+  /* Leave 80px on the left for the collapsed rail */
+  padding-left: 80px;
+  position: relative;
 }
 
 .no-transition, .no-transition * { transition: none !important; }
 
 /* ── Navigation Rail ───────────────────────────────────── */
 .nav-rail {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
   display: flex;
   flex-direction: column;
-  width: 80px;
+  width: 240px;
   background: var(--md-sys-color-surface-container-low);
   border-right: 1px solid var(--md-sys-color-outline-variant);
   padding: 8px 0;
   gap: 2px;
   align-items: center;
-  flex-shrink: 0;
   overflow: hidden;
   overflow-y: auto;
-  transition: width 200ms var(--md-sys-motion-easing-standard);
+  /* Slide most of the rail off-screen — only 80px visible */
+  transform: translateX(calc(80px - 240px));
+  transition: transform 250ms var(--md-sys-motion-easing-standard),
+              box-shadow 250ms;
+  will-change: transform;
   z-index: 10;
 }
 
@@ -265,10 +275,23 @@ body {
 .nav-rail-item:hover .indicator { background: rgba(208,188,255,.08); }
 .nav-rail-item.active:hover .indicator { background: var(--md-sys-color-secondary-container); }
 
-/* ── Expanded drawer mode ───────────────────────────────── */
+/* ── Expanded drawer mode (overlay) ─────────────────────── */
 .nav-rail.expanded {
-  width: 240px;
+  transform: translateX(0);
   align-items: stretch;
+  box-shadow: 4px 0 24px rgba(0,0,0,.4);
+}
+
+/* ── Pinned mode: push content instead of overlay ────────── */
+.nav-rail.pinned {
+  box-shadow: none;
+}
+.body-row:has(.nav-rail.pinned) {
+  padding-left: 240px;
+  transition: padding-left 250ms var(--md-sys-motion-easing-standard);
+}
+.body-row {
+  transition: padding-left 250ms var(--md-sys-motion-easing-standard);
 }
 .nav-rail.expanded .nav-rail-header {
   justify-content: flex-start;
@@ -1196,6 +1219,7 @@ textarea.field { resize: vertical; min-height: 80px; }
   /* Hide rail, show bottom nav */
   .nav-rail { display: none !important; }
   .bottom-nav { display: flex; }
+  .body-row { padding-left: 0 !important; }
 
   /* Dialogs already anchored at bottom globally; ensure full width */
   .dialog { max-width: 100%; width: 100%; }
