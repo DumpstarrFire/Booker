@@ -5,15 +5,15 @@
 
 /* ─── Color tokens — dark (default) ─────────────────────────────────────── */
 :root {
-  --surface:      #0e0e12;
-  --surface-card: #16161d;
-  --surface-raised:#1c1c26;
-  --surface-high: #22222e;
-  --ink:          #e2e2ee;
-  --ink-muted:    #8080a0;
-  --ink-faint:    #404055;
-  --line:         rgba(255,255,255,0.07);
-  --line-strong:  rgba(255,255,255,0.12);
+  --surface:      #111118;
+  --surface-card: #1a1a24;
+  --surface-raised:#21212e;
+  --surface-high: #28283a;
+  --ink:          #eaeaf6;
+  --ink-muted:    #9898b8;
+  --ink-faint:    #585870;
+  --line:         rgba(255,255,255,0.10);
+  --line-strong:  rgba(255,255,255,0.18);
 }
 
 /* ─── Color tokens — light ───────────────────────────────────────────────── */
