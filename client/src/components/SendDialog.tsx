@@ -4,7 +4,7 @@ import { useMutation } from '@tanstack/react-query'
 import Dialog from './Dialog'
 import * as api from '../api/client'
 import { EmailAddress } from '../types'
-import { useToast } from '../App'
+import { useToast } from '../contexts/toast'
 
 interface SendDialogProps {
   bookId: number

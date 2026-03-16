@@ -1,34 +1,14 @@
-import React, {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
-} from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { CheckCircle, AlertCircle, Info, X, Loader2 } from 'lucide-react';
 import api from './api/client';
 import { useStore } from './store';
+import { Toast, ToastContext } from './contexts/toast';
 import LoginPage from './pages/LoginPage';
 import SetupPage from './pages/SetupPage';
 import LibraryPage from './pages/LibraryPage';
 import UploadPage from './pages/UploadPage';
 import SettingsPage from './pages/SettingsPage';
 import TopBar from './components/TopBar';
-
-// ── Toast context ─────────────────────────────────────────────────────────
-
-interface Toast {
-  id: number;
-  type: 'success' | 'error' | 'info';
-  message: string;
-}
-
-interface ToastCtx {
-  addToast: (type: Toast['type'], message: string) => void;
-}
-
-export const ToastContext = createContext<ToastCtx>({ addToast: () => {} });
-export const useToast = () => useContext(ToastContext);
 
 let _toastId = 0;
 
@@ -106,7 +86,6 @@ export default function App() {
     } else if (stored === 'dark') {
       document.documentElement.dataset.theme = '';
     } else {
-      // system: follow prefers-color-scheme
       const prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
       document.documentElement.dataset.theme = prefersLight ? 'light' : '';
     }
