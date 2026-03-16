@@ -371,7 +371,7 @@ export function uploadCoverFile(bookId: number, file: File): Promise<Book> {
       const body = await r.json().catch(() => ({}))
       throw new Error((body as { error?: string }).error ?? `Upload failed (HTTP ${r.status})`)
     }
-    return r.json() as Promise<Book>
+    return r.json().catch(() => { throw new Error('Invalid response from server') }) as Promise<Book>
   })
 }
 

@@ -87,13 +87,14 @@ export const useStore = create<StoreState>()(
       setFilters: (partial) =>
         set((state) => ({
           filters: { ...state.filters, ...partial },
-          // Reset to first page whenever filters change
           page: 1,
+          // Filter change invalidates the shift-click anchor
+          lastSelectedId: null,
         })),
 
       // Pagination
       page: 1,
-      setPage: (page) => set({ page }),
+      setPage: (page) => set((state) => ({ page, lastSelectedId: state.selectionMode ? null : state.lastSelectedId })),
 
       // View preferences (initial values — overridden by persisted storage)
       viewMode: 'grid',
