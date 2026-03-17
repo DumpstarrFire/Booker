@@ -34,6 +34,8 @@ services:
       - "5000:5000"
     volumes:
       - /path/to/config:/app/data
+    environment:
+      - SESSION_COOKIE_SECURE=false #Required if accessing via HTTP
     restart: unless-stopped
 
 ```
