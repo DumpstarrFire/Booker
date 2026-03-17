@@ -55,13 +55,6 @@ def login_required(f):
 def register_auth_routes(app, Settings):
     """Register login/logout/setup routes on the Flask app."""
 
-    @app.route("/setup")
-    def setup_page():
-        if not is_first_run(Settings):
-            return redirect("/")
-        from flask import render_template
-        return render_template("setup.html")
-
     @app.route("/api/auth/setup", methods=["POST"])
     def api_setup():
         if not is_first_run(Settings):
@@ -78,15 +71,6 @@ def register_auth_routes(app, Settings):
         session["username"] = username
         session.permanent = True
         return jsonify({"success": True})
-
-    @app.route("/login")
-    def login_page():
-        if is_first_run(Settings):
-            return redirect("/setup")
-        if session.get("authenticated"):
-            return redirect("/")
-        from flask import render_template
-        return render_template("login.html")
 
     @app.route("/api/auth/login", methods=["POST"])
     def api_login():
