@@ -140,7 +140,6 @@ from flask import (
     request,
     send_file,
     send_from_directory,
-    render_template,
     redirect,
     session,
     abort,
@@ -284,7 +283,7 @@ def create_app():
     register_auth_routes(app, Settings)
 
     # -----------------------------------------------------------------------
-    # Frontend – serve React SPA (falls back to legacy templates if no build)
+    # Frontend – serve React SPA
     # -----------------------------------------------------------------------
 
     _REACT_DIST = Path(__file__).parent / "static" / "dist"
@@ -303,18 +302,10 @@ def create_app():
         # Never intercept API routes
         if path.startswith("api/") or path.startswith("static/"):
             abort(404)
-        # Serve React build if available
-        if _REACT_DIST.exists():
-            target = _REACT_DIST / path
-            if path and target.exists() and target.is_file():
-                return send_from_directory(_REACT_DIST, path)
-            return send_from_directory(_REACT_DIST, "index.html")
-        # Legacy template fallback
-        if path in ("login", "setup"):
-            return render_template(f"{path}.html")
-        if not session.get("authenticated"):
-            return redirect("/login")
-        return render_template("index.html", username=session.get("username", ""))
+        target = _REACT_DIST / path
+        if path and target.exists() and target.is_file():
+            return send_from_directory(_REACT_DIST, path)
+        return send_from_directory(_REACT_DIST, "index.html")
 
     # -----------------------------------------------------------------------
     # Books – CRUD
