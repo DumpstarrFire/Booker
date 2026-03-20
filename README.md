@@ -42,6 +42,8 @@ services:
 
 ```
 
+Access the UI at http://localhost:5000
+
 ## License
 
 MIT
