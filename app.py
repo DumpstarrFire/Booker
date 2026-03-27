@@ -240,6 +240,58 @@ def _cleanup_empty_dirs(directory: Path) -> None:
         logger.debug("Could not remove empty directory %s: %s", directory, exc)
 
 
+def _clean_epub_font_sizes(epub_path: Path) -> None:
+    """Strip font-size declarations from CSS and inline styles in an EPUB.
+
+    Preserves all other formatting (bold, italic, color, images, layout).
+    Modifies the file in-place; silently skips on any error.
+    """
+    _FONT_SIZE_RE = re.compile(r'\bfont-size\s*:[^;}{]+;?', re.IGNORECASE)
+    _STYLE_ATTR_RE = re.compile(r'(<[^>]+\bstyle\s*=\s*["\'])([^"\']*?)(["\'])', re.IGNORECASE)
+
+    def _strip_font_size(text: str) -> str:
+        return _FONT_SIZE_RE.sub('', text)
+
+    def _strip_inline(match: re.Match) -> str:
+        before, style, after = match.group(1), match.group(2), match.group(3)
+        return before + _FONT_SIZE_RE.sub('', style) + after
+
+    try:
+        buf = io.BytesIO(epub_path.read_bytes())
+        with zipfile.ZipFile(buf, 'r') as zin:
+            names = zin.namelist()
+            entries: dict[str, bytes] = {}
+            changed = False
+            for name in names:
+                data = zin.read(name)
+                lower = name.lower()
+                if lower.endswith('.css'):
+                    cleaned = _strip_font_size(data.decode('utf-8', errors='replace'))
+                    new_data = cleaned.encode('utf-8')
+                elif lower.endswith(('.html', '.xhtml', '.htm', '.xml')):
+                    text = data.decode('utf-8', errors='replace')
+                    cleaned = _STYLE_ATTR_RE.sub(_strip_inline, text)
+                    new_data = cleaned.encode('utf-8')
+                else:
+                    new_data = data
+                entries[name] = new_data
+                if new_data != data:
+                    changed = True
+
+        if not changed:
+            return
+
+        out = io.BytesIO()
+        with zipfile.ZipFile(buf, 'r') as zin_orig:
+            with zipfile.ZipFile(out, 'w', compression=zipfile.ZIP_DEFLATED) as zout:
+                for name in names:
+                    orig_info = zin_orig.getinfo(name)
+                    zout.writestr(orig_info, entries[name])
+        epub_path.write_bytes(out.getvalue())
+    except Exception as exc:
+        logger.warning("epub font-size cleaning failed for %s: %s", epub_path, exc)
+
+
 def create_app():
     app = Flask(__name__)
     app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
@@ -505,6 +557,10 @@ def create_app():
             counter += 1
 
         file.save(str(dest))
+
+        if ext == "epub" and Settings.get("epub_normalize_fonts", "false") == "true":
+            _clean_epub_font_sizes(dest)
+
         size = dest.stat().st_size
 
         book = Book(
