@@ -92,6 +92,27 @@ export default function FilterBar() {
     queryFn: () => api.getSeries(),
   })
 
+  useEffect(() => {
+    let cancelled = false
+
+    const checkSelectedTags = async () => {
+      if (!selectionMode || selectedBookIds.length === 0) {
+        setSelectionHasTaggedBooks(false)
+        return
+      }
+
+      try {
+        const tagLists = await Promise.all(selectedBookIds.map(bookId => api.getBookTags(bookId)))
+        if (!cancelled) setSelectionHasTaggedBooks(tagLists.some(tagsForBook => tagsForBook.length > 0))
+      } catch {
+        if (!cancelled) setSelectionHasTaggedBooks(false)
+      }
+    }
+
+    checkSelectedTags()
+    return () => { cancelled = true }
+  }, [selectionMode, selectedBookIds])
+
   const hasActiveFilters =
     filters.format !== '' || filters.tag !== '' || filters.series !== '' ||
     filters.sort !== 'author' || filters.order !== 'asc'
