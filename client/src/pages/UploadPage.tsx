@@ -161,7 +161,7 @@ export default function UploadPage({ onClose }: Props) {
                         <div className="h-full bg-accent rounded-full transition-all duration-200" style={{ width: `${item.progress}%` }} />
                       </div>
                       {item.progress >= 100 && (
-                        <p className="text-xs text-ink-muted">Processing — this may take a moment…</p>
+                        <p className="text-xs text-ink-muted">Processing, this may take a moment…</p>
                       )}
                     </div>
                   )}
