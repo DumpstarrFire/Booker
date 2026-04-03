@@ -120,7 +120,14 @@ export default function CoverDialog({ bookTitle, bookAuthor, onClose, onSelected
   )
 
   return (
-    <Dialog open onClose={onClose} title="Change Cover" footer={footer} wide>
+    <Dialog
+      open
+      onClose={onClose}
+      title="Change Cover"
+      footer={footer}
+      wide
+      panelClassName="h-[75dvh] sm:h-auto"
+    >
       <div className="p-4 space-y-3">
         {/* Search bar */}
         <div className="flex gap-2">
@@ -147,7 +154,7 @@ export default function CoverDialog({ bookTitle, bookAuthor, onClose, onSelected
           <div className="flex justify-center py-8"><Spinner size={24} /></div>
         )}
         {!searching && coverResults.length > 0 && (
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 max-h-72 overflow-y-auto pr-1">
+          <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 max-h-72 overflow-y-auto pr-1">
             {coverResults.map((r, i) => (
               <button
                 key={i}
