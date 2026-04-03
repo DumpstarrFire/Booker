@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Search, Upload, Link, X, Check } from 'lucide-react'
+import { Search, Upload, X, Check } from 'lucide-react'
 import Dialog from './Dialog'
 import Spinner from './Spinner'
 
@@ -143,7 +143,7 @@ export default function CoverDialog({ bookTitle, bookAuthor, onClose, onSelected
           <div className="flex justify-center py-8"><Spinner size={24} /></div>
         )}
         {!searching && coverResults.length > 0 && (
-          <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-72 overflow-y-auto pr-1">
+          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2 max-h-[45vh] sm:max-h-72 overflow-y-auto pr-1">
             {coverResults.map((r, i) => (
               <button
                 key={i}
@@ -191,37 +191,25 @@ export default function CoverDialog({ bookTitle, bookAuthor, onClose, onSelected
           </div>
         )}
 
-        {/* Compact bottom row: upload file + paste URL */}
-        <div className="flex flex-wrap gap-2 pt-1 border-t border-line">
+        {/* Bottom row: paste URL + upload file */}
+        <div className="flex items-center gap-2 pt-3 border-t border-line">
           <input ref={fileInputRef} type="file" accept="image/*" className="sr-only" onChange={handleFileSelect} />
+          <input
+            className="field flex-1 min-w-0 text-sm"
+            value={manualUrl}
+            onChange={e => setManualUrl(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && applyManualUrl()}
+            placeholder="Paste image URL and press Enter…"
+            type="url"
+          />
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs text-ink border border-line hover:bg-surface-raised transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 rounded text-sm text-ink border border-line hover:bg-surface-raised transition-colors shrink-0"
           >
-            <Upload size={12} />
-            Upload file
+            <Upload size={14} />
+            Upload
           </button>
-
-          <div className="flex gap-1.5 flex-1 min-w-0">
-            <input
-              className="field flex-1 min-w-0 text-xs py-1.5"
-              value={manualUrl}
-              onChange={e => setManualUrl(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && applyManualUrl()}
-              placeholder="Paste image URL…"
-              type="url"
-            />
-            <button
-              type="button"
-              onClick={applyManualUrl}
-              disabled={!manualUrl.trim()}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium border border-line hover:bg-surface-raised transition-colors disabled:opacity-50 shrink-0"
-            >
-              <Link size={12} />
-              Use
-            </button>
-          </div>
         </div>
       </div>
     </Dialog>
