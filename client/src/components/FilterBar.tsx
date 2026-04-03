@@ -93,34 +93,30 @@ export default function FilterBar() {
     queryFn: () => api.getSeries(),
   })
 
-  const refreshSelectionHasTaggedBooks = useCallback(async () => {
-    if (!selectionMode || selectedBookIds.length === 0) {
-      setSelectionHasTaggedBooks(false)
-      return
-    }
+  const selectionHasAnyTags = useCallback(async (bookIds: number[]) => {
+    if (!selectionMode || bookIds.length === 0) return false
     try {
-      for (const bookId of selectedBookIds) {
+      for (const bookId of bookIds) {
         const tagsForBook = await api.getBookTags(bookId)
-        if (tagsForBook.length > 0) {
-          setSelectionHasTaggedBooks(true)
-          return
-        }
+        if (tagsForBook.length > 0) return true
       }
-      setSelectionHasTaggedBooks(false)
+      return false
     } catch {
-      setSelectionHasTaggedBooks(false)
+      return false
     }
-  }, [selectionMode, selectedBookIds])
+  }, [selectionMode])
 
   useEffect(() => {
     let cancelled = false
+
     const run = async () => {
-      await refreshSelectionHasTaggedBooks()
-      if (cancelled) return
+      const hasTaggedBooks = await selectionHasAnyTags(selectedBookIds)
+      if (!cancelled) setSelectionHasTaggedBooks(hasTaggedBooks)
     }
+
     run()
     return () => { cancelled = true }
-  }, [refreshSelectionHasTaggedBooks])
+  }, [selectedBookIds, selectionHasAnyTags])
 
   const hasActiveFilters =
     filters.format !== '' || filters.tag !== '' || filters.series !== '' ||
@@ -182,7 +178,8 @@ export default function FilterBar() {
       }
       qc.invalidateQueries({ queryKey: ['books'] })
       qc.invalidateQueries({ queryKey: ['tags'] })
-      await refreshSelectionHasTaggedBooks()
+      const hasTaggedBooks = await selectionHasAnyTags(selectedBookIds)
+      setSelectionHasTaggedBooks(hasTaggedBooks)
       if (failedBooks > 0) {
         window.alert(`Cleared tags for most books, but ${failedBooks} book${failedBooks === 1 ? '' : 's'} failed. Please try again.`)
       }
