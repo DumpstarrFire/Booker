@@ -156,9 +156,9 @@ export default function CoverDialog({ bookTitle, bookAuthor, onClose, onSelected
           )}
           {!searching && coverResults.length > 0 && (
             <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 overflow-y-auto pr-1 h-full min-h-0 sm:max-h-72 content-start">
-              {coverResults.map(r => (
+              {coverResults.map((r, i) => (
                 <button
-                  key={r.cover_url || `${r.source}:${r.title}`}
+                  key={i}
                   type="button"
                   onClick={() => selectSearchResult(r.cover_url)}
                   className={[
@@ -167,15 +167,13 @@ export default function CoverDialog({ bookTitle, bookAuthor, onClose, onSelected
                   ].join(' ')}
                   title={`${r.title} (${SOURCE_LABELS[r.source] ?? r.source})`}
                 >
-                  <div className="w-full aspect-[2/3] bg-surface-raised">
-                    <img
-                      src={r.cover_url}
-                      alt={r.title}
-                      loading="lazy"
-                      className="w-full h-full object-cover"
-                      onError={e => (e.currentTarget.closest('button')!.style.display = 'none')}
-                    />
-                  </div>
+                  <img
+                    src={r.cover_url}
+                    alt={r.title}
+                    loading="lazy"
+                    className="w-full aspect-[2/3] object-cover bg-surface-raised"
+                    onError={e => (e.currentTarget.closest('button')!.style.display = 'none')}
+                  />
                   <span className="absolute bottom-0 left-0 right-0 text-[8px] bg-black/60 text-white px-0.5 py-0.5 truncate text-center leading-tight">
                     {SOURCE_LABELS[r.source] ?? r.source}
                   </span>
