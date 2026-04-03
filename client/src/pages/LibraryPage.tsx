@@ -21,7 +21,7 @@ function getPageNumbers(current: number, total: number): (number | '…')[] {
 }
 
 export default function LibraryPage() {
-  const { filters, page, setPage, perPage, viewMode, gridSize, selectedBookId, setSelectedBookId, setVisibleBookIds } = useStore()
+  const { filters, page, setPage, perPage, viewMode, selectedBookId, setSelectedBookId, setVisibleBookIds } = useStore()
 
   const queryKey = ['books', filters, page, perPage]
   const { data, isFetching, isError, error } = useQuery({
@@ -85,10 +85,7 @@ export default function LibraryPage() {
         )}
 
         {viewMode === 'grid' && books.length > 0 && (
-          <div
-            className="grid gap-3"
-            style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${gridSize}px, 1fr))` }}
-          >
+          <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
             {books.map(book => (
               <BookCard key={book.id} book={book} onClick={() => setSelectedBookId(book.id)} />
             ))}
