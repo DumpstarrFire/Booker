@@ -93,30 +93,34 @@ export default function FilterBar() {
     queryFn: () => api.getSeries(),
   })
 
-  const selectionHasAnyTags = useCallback(async (bookIds: number[]) => {
-    if (!selectionMode || bookIds.length === 0) return false
-    try {
-      for (const bookId of bookIds) {
-        const tagsForBook = await api.getBookTags(bookId)
-        if (tagsForBook.length > 0) return true
-      }
-      return false
-    } catch {
-      return false
+  const refreshSelectionHasTaggedBooks = useCallback(async () => {
+    if (!selectionMode || selectedBookIds.length === 0) {
+      setSelectionHasTaggedBooks(false)
+      return
     }
-  }, [selectionMode])
+    try {
+      for (const bookId of selectedBookIds) {
+        const tagsForBook = await api.getBookTags(bookId)
+        if (tagsForBook.length > 0) {
+          setSelectionHasTaggedBooks(true)
+          return
+        }
+      }
+      setSelectionHasTaggedBooks(false)
+    } catch {
+      setSelectionHasTaggedBooks(false)
+    }
+  }, [selectionMode, selectedBookIds])
 
   useEffect(() => {
     let cancelled = false
-
     const run = async () => {
-      const hasTaggedBooks = await selectionHasAnyTags(selectedBookIds)
-      if (!cancelled) setSelectionHasTaggedBooks(hasTaggedBooks)
+      await refreshSelectionHasTaggedBooks()
+      if (cancelled) return
     }
-
     run()
     return () => { cancelled = true }
-  }, [selectedBookIds, selectionHasAnyTags])
+  }, [refreshSelectionHasTaggedBooks])
 
   const hasActiveFilters =
     filters.format !== '' || filters.tag !== '' || filters.series !== '' ||
@@ -155,7 +159,6 @@ export default function FilterBar() {
       await api.bulkAddTag(selectedBookIds, tagName)
       setSelectionHasTaggedBooks(true)
       qc.invalidateQueries({ queryKey: ['books'] })
-      qc.invalidateQueries({ queryKey: ['book'] })
       qc.invalidateQueries({ queryKey: ['tags'] })
     } finally {
       setTagging(false)
@@ -178,10 +181,8 @@ export default function FilterBar() {
         }
       }
       qc.invalidateQueries({ queryKey: ['books'] })
-      qc.invalidateQueries({ queryKey: ['book'] })
       qc.invalidateQueries({ queryKey: ['tags'] })
-      const hasTaggedBooks = await selectionHasAnyTags(selectedBookIds)
-      setSelectionHasTaggedBooks(hasTaggedBooks)
+      await refreshSelectionHasTaggedBooks()
       if (failedBooks > 0) {
         window.alert(`Cleared tags for most books, but ${failedBooks} book${failedBooks === 1 ? '' : 's'} failed. Please try again.`)
       }

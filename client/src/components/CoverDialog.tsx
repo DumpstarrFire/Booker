@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Search, Upload, X, Check } from 'lucide-react'
+import { Search, Upload, Link, X, Check } from 'lucide-react'
 import Dialog from './Dialog'
 import Spinner from './Spinner'
 
@@ -71,10 +71,6 @@ export default function CoverDialog({ bookTitle, bookAuthor, onClose, onSelected
     setSelectedUrl(url); setPreviewUrl(url); setPreviewFile(null); setPreviewMode('url')
   }
 
-  function handleUploadButtonClick() {
-    fileInputRef.current?.click()
-  }
-
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -120,15 +116,8 @@ export default function CoverDialog({ bookTitle, bookAuthor, onClose, onSelected
   )
 
   return (
-    <Dialog
-      open
-      onClose={onClose}
-      title="Change Cover"
-      footer={footer}
-      wide
-      panelClassName="h-[75dvh] sm:h-auto"
-    >
-      <div className="p-4 h-full min-h-0 flex flex-col gap-3">
+    <Dialog open onClose={onClose} title="Change Cover" footer={footer} wide>
+      <div className="p-4 space-y-3">
         {/* Search bar */}
         <div className="flex gap-2">
           <input
@@ -150,47 +139,44 @@ export default function CoverDialog({ bookTitle, bookAuthor, onClose, onSelected
         </div>
 
         {/* Results grid */}
-        <div className="flex-1 min-h-0">
-          {searching && (
-            <div className="flex h-full min-h-24 items-center justify-center"><Spinner size={24} /></div>
-          )}
-          {!searching && coverResults.length > 0 && (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(92px,1fr))] md:grid-cols-4 lg:grid-cols-5 gap-2 overflow-y-auto pr-1 h-full min-h-0 sm:max-h-72 content-start">
-              {coverResults.map((r, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => selectSearchResult(r.cover_url)}
-                  className={[
-                    'relative rounded-lg overflow-hidden border-2 transition-all',
-                    selectedUrl === r.cover_url ? 'border-accent' : 'border-transparent hover:border-line',
-                  ].join(' ')}
-                  style={{ aspectRatio: '2 / 3' }}
-                  title={`${r.title} (${SOURCE_LABELS[r.source] ?? r.source})`}
-                >
-                  <img
-                    src={r.cover_url}
-                    alt={r.title}
-                    loading="lazy"
-                    className="absolute inset-0 w-full h-full object-cover bg-surface-raised"
-                    onError={e => (e.currentTarget.closest('button')!.style.display = 'none')}
-                  />
-                  <span className="absolute bottom-0 left-0 right-0 text-[8px] bg-black/60 text-white px-0.5 py-0.5 truncate text-center leading-tight">
-                    {SOURCE_LABELS[r.source] ?? r.source}
+        {searching && (
+          <div className="flex justify-center py-8"><Spinner size={24} /></div>
+        )}
+        {!searching && coverResults.length > 0 && (
+          <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-72 overflow-y-auto pr-1">
+            {coverResults.map((r, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => selectSearchResult(r.cover_url)}
+                className={[
+                  'relative rounded-lg overflow-hidden border-2 transition-all',
+                  selectedUrl === r.cover_url ? 'border-accent' : 'border-transparent hover:border-line',
+                ].join(' ')}
+                title={`${r.title} (${SOURCE_LABELS[r.source] ?? r.source})`}
+              >
+                <img
+                  src={r.cover_url}
+                  alt={r.title}
+                  loading="lazy"
+                  className="w-full aspect-[2/3] object-cover bg-surface-raised"
+                  onError={e => (e.currentTarget.closest('button')!.style.display = 'none')}
+                />
+                <span className="absolute bottom-0 left-0 right-0 text-[8px] bg-black/60 text-white px-0.5 py-0.5 truncate text-center leading-tight">
+                  {SOURCE_LABELS[r.source] ?? r.source}
+                </span>
+                {selectedUrl === r.cover_url && (
+                  <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-accent flex items-center justify-center">
+                    <Check size={10} className="text-white" />
                   </span>
-                  {selectedUrl === r.cover_url && (
-                    <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-accent flex items-center justify-center">
-                      <Check size={10} className="text-white" />
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-          {!searching && coverResults.length === 0 && searchQuery && (
-            <p className="text-xs text-ink-muted text-center py-2">No covers found — try a different search</p>
-          )}
-        </div>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+        {!searching && coverResults.length === 0 && searchQuery && (
+          <p className="text-xs text-ink-muted text-center py-2">No covers found — try a different search</p>
+        )}
 
         {/* Selected preview strip */}
         {previewUrl && (
@@ -205,27 +191,37 @@ export default function CoverDialog({ bookTitle, bookAuthor, onClose, onSelected
           </div>
         )}
 
-        {/* Bottom row: URL input + file upload */}
-        <div className="flex gap-2 pt-3 border-t border-line">
+        {/* Compact bottom row: upload file + paste URL */}
+        <div className="flex flex-wrap gap-2 pt-1 border-t border-line">
           <input ref={fileInputRef} type="file" accept="image/*" className="sr-only" onChange={handleFileSelect} />
-          <div className="flex-1 min-w-0">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs text-ink border border-line hover:bg-surface-raised transition-colors"
+          >
+            <Upload size={12} />
+            Upload file
+          </button>
+
+          <div className="flex gap-1.5 flex-1 min-w-0">
             <input
-              className="field w-full"
+              className="field flex-1 min-w-0 text-xs py-1.5"
               value={manualUrl}
               onChange={e => setManualUrl(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && applyManualUrl()}
-              placeholder="Paste image URL and press Enter..."
+              placeholder="Paste image URL…"
               type="url"
             />
+            <button
+              type="button"
+              onClick={applyManualUrl}
+              disabled={!manualUrl.trim()}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-medium border border-line hover:bg-surface-raised transition-colors disabled:opacity-50 shrink-0"
+            >
+              <Link size={12} />
+              Use
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={handleUploadButtonClick}
-            className="flex items-center gap-1.5 px-3 py-2 rounded text-sm font-medium text-ink border border-line hover:bg-surface-raised transition-colors shrink-0 self-start"
-          >
-            <Upload size={14} />
-            Upload
-          </button>
         </div>
       </div>
     </Dialog>

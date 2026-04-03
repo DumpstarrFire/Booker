@@ -8,10 +8,9 @@ interface DialogProps {
   children: ReactNode
   footer?: ReactNode
   wide?: boolean
-  panelClassName?: string
 }
 
-export default function Dialog({ open, onClose, title, children, footer, wide = false, panelClassName }: DialogProps) {
+export default function Dialog({ open, onClose, title, children, footer, wide = false }: DialogProps) {
   const panelRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -65,7 +64,6 @@ export default function Dialog({ open, onClose, title, children, footer, wide = 
           'max-h-[95dvh] sm:max-h-[88vh]',
           'dialog-panel',
           wide ? 'sm:max-w-3xl' : 'sm:max-w-xl',
-          panelClassName ?? '',
         ].join(' ')}
       >
         {/* Header */}
