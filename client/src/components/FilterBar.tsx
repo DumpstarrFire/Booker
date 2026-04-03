@@ -155,6 +155,7 @@ export default function FilterBar() {
       await api.bulkAddTag(selectedBookIds, tagName)
       setSelectionHasTaggedBooks(true)
       qc.invalidateQueries({ queryKey: ['books'] })
+      qc.invalidateQueries({ queryKey: ['book'] })
       qc.invalidateQueries({ queryKey: ['tags'] })
     } finally {
       setTagging(false)
@@ -177,6 +178,7 @@ export default function FilterBar() {
         }
       }
       qc.invalidateQueries({ queryKey: ['books'] })
+      qc.invalidateQueries({ queryKey: ['book'] })
       qc.invalidateQueries({ queryKey: ['tags'] })
       const hasTaggedBooks = await selectionHasAnyTags(selectedBookIds)
       setSelectionHasTaggedBooks(hasTaggedBooks)
