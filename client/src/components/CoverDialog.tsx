@@ -165,13 +165,14 @@ export default function CoverDialog({ bookTitle, bookAuthor, onClose, onSelected
                     'relative rounded-lg overflow-hidden border-2 transition-all',
                     selectedUrl === r.cover_url ? 'border-accent' : 'border-transparent hover:border-line',
                   ].join(' ')}
+                  style={{ aspectRatio: '2 / 3' }}
                   title={`${r.title} (${SOURCE_LABELS[r.source] ?? r.source})`}
                 >
                   <img
                     src={r.cover_url}
                     alt={r.title}
                     loading="lazy"
-                    className="w-full aspect-[2/3] object-cover bg-surface-raised"
+                    className="absolute inset-0 w-full h-full object-cover bg-surface-raised"
                     onError={e => (e.currentTarget.closest('button')!.style.display = 'none')}
                   />
                   <span className="absolute bottom-0 left-0 right-0 text-[8px] bg-black/60 text-white px-0.5 py-0.5 truncate text-center leading-tight">
